@@ -174,7 +174,7 @@ const handleCancel = () => {
 </script>
 
 <style lang="less" scoped>
-::v-deep.ant-picker-range {
+:deep(.ant-picker-range) {
   width: 390px;
 }
 </style>
