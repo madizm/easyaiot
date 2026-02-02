@@ -12,6 +12,8 @@ import os
 import sys
 import time
 import threading
+import concurrent.futures
+import psutil
 import logging
 import subprocess
 import signal
@@ -122,12 +124,12 @@ alert_time_lock = threading.Lock()  # 告警时间戳锁，确保线程安全
 
 # 配置参数（从数据库读取，支持环境变量覆盖以降低CPU占用）
 # 帧率：降低可减少CPU占用和推流速度
-SOURCE_FPS = int(os.getenv('SOURCE_FPS', '15'))  # 默认15fps（原25fps）
+SOURCE_FPS = int(os.getenv('SOURCE_FPS', '10'))  # 默认10fps（原15fps）进一步降低CPU占用
 # 分辨率：降低可大幅减少CPU占用和推流速度
 TARGET_WIDTH = int(os.getenv('TARGET_WIDTH', '640'))  # 默认640（原1280）
 TARGET_HEIGHT = int(os.getenv('TARGET_HEIGHT', '360'))  # 默认360（原720）
 TARGET_RESOLUTION = (TARGET_WIDTH, TARGET_HEIGHT)
-EXTRACT_INTERVAL = int(os.getenv('EXTRACT_INTERVAL', '5'))
+EXTRACT_INTERVAL = int(os.getenv('EXTRACT_INTERVAL', '8'))  # 增加抽帧间隔，降低CPU占用
 BUFFER_SIZE = int(os.getenv('BUFFER_SIZE', '70'))
 MIN_BUFFER_FRAMES = int(os.getenv('MIN_BUFFER_FRAMES', '15'))
 MAX_WAIT_TIME = float(os.getenv('MAX_WAIT_TIME', '0.08'))
@@ -142,20 +144,36 @@ FFMPEG_VIDEO_BITRATE = FFMPEG_VIDEO_BITRATE_ENV.strip() if FFMPEG_VIDEO_BITRATE_
 
 # 编码线程数：None表示自动，可设置为较小值降低CPU
 # 处理空字符串的情况，确保只有有效的数字字符串才会被使用
-FFMPEG_THREADS_ENV = os.getenv('FFMPEG_THREADS', None)
+FFMPEG_THREADS_ENV = os.getenv('FFMPEG_THREADS', '1')
 FFMPEG_THREADS = None if not FFMPEG_THREADS_ENV or FFMPEG_THREADS_ENV.strip() == '' else FFMPEG_THREADS_ENV.strip()
 # GOP大小：2秒一个关键帧（在SOURCE_FPS定义后计算）
 FFMPEG_GOP_SIZE_ENV = os.getenv('FFMPEG_GOP_SIZE', None)
 FFMPEG_GOP_SIZE = int(FFMPEG_GOP_SIZE_ENV) if FFMPEG_GOP_SIZE_ENV else (SOURCE_FPS * 2)
 # YOLO检测参数（优化以降低CPU占用）
-YOLO_IMG_SIZE = int(os.getenv('YOLO_IMG_SIZE', '416'))  # 检测分辨率：降低可减少CPU占用（原640）
+YOLO_IMG_SIZE = int(os.getenv('YOLO_IMG_SIZE', '320'))  # 检测分辨率：进一步降低可减少CPU占用（原416）
 # 队列大小配置（优化以处理高负载）
 DETECTION_QUEUE_SIZE = int(os.getenv('DETECTION_QUEUE_SIZE', '100'))  # 检测队列大小（默认100，原50）
 PUSH_QUEUE_SIZE = int(os.getenv('PUSH_QUEUE_SIZE', '100'))  # 推帧队列大小（默认100，原50）
 EXTRACT_QUEUE_SIZE = int(os.getenv('EXTRACT_QUEUE_SIZE', '50'))  # 抽帧队列大小（默认50）
 # 检测工作线程数量（优化以提升处理能力）
-YOLO_WORKER_THREADS = int(os.getenv('YOLO_WORKER_THREADS', '2'))  # YOLO检测线程数（默认2，原1）
+CPU_COUNT = os.cpu_count() or 4
+YOLO_WORKER_THREADS = int(os.getenv('YOLO_WORKER_THREADS', str(max(1, CPU_COUNT // 2))))  # YOLO检测线程数（默认使用一半CPU核心数，至少1个线程）
 
+# YOLO线程池执行器
+yolo_executor = None
+
+# 性能监控和自适应节流相关变量
+performance_stats = {
+    'cpu_percent': 0,
+    'cpu_percent_history': [],
+    'frame_rates': {},  # {device_id: fps}
+    'queue_sizes': {},  # {queue_name: size}
+    'total_frames_processed': 0,
+    'last_monitor_time': time.time()
+}
+performance_lock = threading.Lock()
+adaptive_extract_interval = EXTRACT_INTERVAL  # 动态调整的抽帧间隔
+adaptive_source_fps = SOURCE_FPS  # 动态调整的帧率
 
 def download_model_file(model_id: int, model_path: str) -> Optional[str]:
     """下载模型文件到本地
@@ -772,6 +790,93 @@ def save_tracking_targets_periodically():
     logger.info("💾 追踪目标处理线程停止")
 
 
+def monitor_performance():
+    """性能监控和自适应节流线程"""
+    logger.info("📊 性能监控线程启动")
+
+    # 检查psutil是否可用
+    try:
+        import psutil
+        psutil_available = True
+    except ImportError:
+        logger.warning("⚠️  psutil库未安装，性能监控功能将禁用")
+        logger.warning("   请安装: pip install psutil")
+        psutil_available = False
+
+    while not stop_event.is_set():
+        # 如果psutil不可用，休眠后继续
+        if not psutil_available:
+            time.sleep(10)
+            continue
+
+        try:
+            # 获取CPU使用率
+            cpu_percent = psutil.cpu_percent(interval=5)
+
+            # 更新性能统计数据
+            with performance_lock:
+                performance_stats['cpu_percent'] = cpu_percent
+                performance_stats['cpu_percent_history'].append(cpu_percent)
+                # 只保留最近30个记录（约2.5分钟）
+                if len(performance_stats['cpu_percent_history']) > 30:
+                    performance_stats['cpu_percent_history'] = performance_stats['cpu_percent_history'][-30:]
+
+                # 更新队列大小信息
+                performance_stats['queue_sizes'] = {
+                    'extract_queues': sum(q.qsize() for q in extract_queues.values()),
+                    'detection_queues': sum(q.qsize() for q in detection_queues.values()),
+                    'push_queues': sum(q.qsize() for q in push_queues.values())
+                }
+
+            # 自适应节流逻辑
+            global adaptive_extract_interval, adaptive_source_fps, EXTRACT_INTERVAL, SOURCE_FPS
+            with performance_lock:
+                # 计算平均CPU使用率（基于最近10个样本）
+                recent_cpu = performance_stats['cpu_percent_history'][-10:] if len(performance_stats['cpu_percent_history']) >= 10 else performance_stats['cpu_percent_history']
+                avg_cpu = sum(recent_cpu) / len(recent_cpu) if recent_cpu else cpu_percent
+
+                # 节流策略
+                if avg_cpu > 80:  # CPU > 80%，启用节流
+                    # 增加抽帧间隔（降低检测频率）
+                    new_extract_interval = min(EXTRACT_INTERVAL * 2, 20)
+                    # 降低帧率
+                    new_source_fps = max(SOURCE_FPS // 2, 5)
+
+                    if new_extract_interval != EXTRACT_INTERVAL or new_source_fps != SOURCE_FPS:
+                        EXTRACT_INTERVAL = new_extract_interval
+                        SOURCE_FPS = new_source_fps
+                        logger.warning(f"🚨 高CPU负载检测: {avg_cpu:.1f}%，启用节流: 抽帧间隔={EXTRACT_INTERVAL}, 帧率={SOURCE_FPS}fps")
+
+                elif avg_cpu < 50 and (EXTRACT_INTERVAL > 8 or SOURCE_FPS < 10):  # CPU < 50%，恢复性能
+                    # 逐步恢复性能
+                    if EXTRACT_INTERVAL > 8:
+                        EXTRACT_INTERVAL = max(EXTRACT_INTERVAL // 2, 8)
+                    if SOURCE_FPS < 10:
+                        SOURCE_FPS = min(SOURCE_FPS * 2, 10)
+
+                    if EXTRACT_INTERVAL < 8 or SOURCE_FPS > 5:
+                        logger.info(f"✅ CPU负载正常: {avg_cpu:.1f}%，恢复性能: 抽帧间隔={EXTRACT_INTERVAL}, 帧率={SOURCE_FPS}fps")
+
+            # 记录性能日志（每30秒一次）
+            current_time = time.time()
+            if current_time - performance_stats['last_monitor_time'] > 30:
+                with performance_lock:
+                    logger.info(f"📊 性能监控: CPU={cpu_percent:.1f}%, 队列大小={performance_stats['queue_sizes']}")
+                    performance_stats['last_monitor_time'] = current_time
+
+            # 每5秒监控一次
+            for _ in range(10):
+                if stop_event.is_set():
+                    break
+                time.sleep(0.5)
+
+        except Exception as e:
+            logger.error(f"性能监控线程异常: {str(e)}", exc_info=True)
+            time.sleep(10)
+
+    logger.info("📊 性能监控线程停止")
+
+
 def check_rtmp_server_connection(rtmp_url: str) -> bool:
     """检查RTMP服务器是否可用
     
@@ -1372,6 +1477,10 @@ def buffer_streamer_worker(device_id: str):
                             # 验证是否为有效的整数
                             threads_value = int(FFMPEG_THREADS)
                             if threads_value > 0:
+                                # 限制最大线程数，防止CPU过载
+                                if threads_value > 4:
+                                    logger.warning(f"   ⚠️  FFMPEG_THREADS 值过高 ({threads_value})，限制为4线程以降低CPU占用")
+                                    threads_value = 4
                                 ffmpeg_cmd.extend(["-threads", str(threads_value)])
                             else:
                                 logger.warning(f"   ⚠️  FFMPEG_THREADS 值无效 ({FFMPEG_THREADS})，跳过线程数限制")
@@ -1575,17 +1684,17 @@ def buffer_streamer_worker(device_id: str):
                     max_retries = 5
                     while not frame_sent and retry_count < max_retries:
                         try:
-                            extract_queues[device_id].put_nowait({
+                            extract_queues[device_id].put({
                                 'frame': frame.copy(),
                                 'frame_number': frame_count,
                                 'timestamp': frame_buffer[frame_count]['timestamp'],
                                 'device_id': device_id
-                            })
+                            }, timeout=0.1)
                             frame_sent = True
                         except queue.Full:
                             retry_count += 1
                             if retry_count < max_retries:
-                                time.sleep(0.01)
+                                time.sleep(0.02)  # 增加等待时间减少CPU占用
                             else:
                                 logger.warning(f"⚠️  设备 {device_id} 抽帧队列已满，帧 {frame_count} 等待处理中...")
             
@@ -1594,7 +1703,7 @@ def buffer_streamer_worker(device_id: str):
             max_process_per_cycle = 20  # 增加每次处理的帧数，加快处理速度
             while processed_count < max_process_per_cycle:
                 try:
-                    push_data = push_queues[device_id].get_nowait()
+                    push_data = push_queues[device_id].get(timeout=0.05)
                     processed_frame = push_data['frame']
                     frame_number = push_data['frame_number']
                     detections = push_data.get('detections', [])
@@ -1646,7 +1755,7 @@ def buffer_streamer_worker(device_id: str):
                 if is_extracted and next_output_frame in pending_frames:
                     # 等待处理完成，优化CPU占用
                     wait_start = time.time()
-                    check_interval = 0.01  # 每10ms检查一次，减少CPU轮询频率
+                    check_interval = 0.02  # 每20ms检查一次，进一步减少CPU轮询频率
                     
                     while next_output_frame in pending_frames and (time.time() - wait_start) < MAX_WAIT_TIME:
                         time.sleep(check_interval)
@@ -1654,7 +1763,7 @@ def buffer_streamer_worker(device_id: str):
                         processed_in_wait = 0
                         while processed_in_wait < 20:  # 增加处理数量
                             try:
-                                push_data = push_queues[device_id].get_nowait()
+                                push_data = push_queues[device_id].get(timeout=0.05)
                                 processed_frame = push_data['frame']
                                 fn = push_data['frame_number']
                                 detections = push_data.get('detections', [])
@@ -1665,7 +1774,7 @@ def buffer_streamer_worker(device_id: str):
                                         frame_buffer[fn]['processed'] = True
                                         frame_buffer[fn]['detections'] = detections
                                         pending_frames.discard(fn)
-                                        
+
                                         # 如果目标帧已处理完成，立即退出
                                         if fn == next_output_frame:
                                             # 更新帧数据
@@ -1691,12 +1800,12 @@ def buffer_streamer_worker(device_id: str):
                     if next_output_frame in pending_frames:
                         # 再给一次机会，等待额外的时间（优化CPU占用）
                         extra_wait_start = time.time()
-                        extra_wait_time = 0.02
+                        extra_wait_time = 0.05
                         while next_output_frame in pending_frames and (time.time() - extra_wait_start) < extra_wait_time:
-                            time.sleep(0.01)  # 增加sleep时间，减少轮询频率
+                            time.sleep(0.02)  # 增加sleep时间，减少轮询频率
                             # 再次检查推帧队列
                             try:
-                                push_data = push_queues[device_id].get_nowait()
+                                push_data = push_queues[device_id].get(timeout=0.05)
                                 processed_frame = push_data['frame']
                                 fn = push_data['frame_number']
                                 detections = push_data.get('detections', [])
@@ -1719,7 +1828,7 @@ def buffer_streamer_worker(device_id: str):
                 last_check_count = 0
                 while last_check_count < 5:  # 快速检查几次
                     try:
-                        push_data = push_queues[device_id].get_nowait()
+                        push_data = push_queues[device_id].get(timeout=0.05)
                         processed_frame = push_data['frame']
                         fn = push_data['frame_number']
                         detections = push_data.get('detections', [])
@@ -1950,69 +2059,69 @@ def buffer_streamer_worker(device_id: str):
 def extractor_worker():
     """抽帧器工作线程：从多个摄像头的缓流器获取帧，抽帧并标记位置"""
     logger.info("📹 抽帧器线程启动（多摄像头并行）")
-    
+
+    idle_count = 0
+    max_idle_count = 10
+
     while not stop_event.is_set():
         try:
-            has_work = False
-            # 遍历所有设备的抽帧队列
-            for device_id, extract_queue in extract_queues.items():
+            # 尝试从每个设备的队列中获取帧（带超时）
+            device_queue_items = list(extract_queues.items())
+            frame_data = None
+            device_id = None
+            extract_queue = None
+
+            for device_id, extract_queue in device_queue_items:
                 try:
-                    frame_data = extract_queue.get_nowait()
-                    frame = frame_data['frame']
-                    frame_number = frame_data['frame_number']
-                    timestamp = frame_data['timestamp']
-                    device_id_from_data = frame_data.get('device_id', device_id)
-                    frame_id = f"{device_id_from_data}_frame_{frame_number}_{int(timestamp)}"
-                    
-                    has_work = True
-                    
-                    # 将帧发送给YOLO检测（带设备ID和位置信息）
-                    detection_queue = detection_queues.get(device_id_from_data)
-                    if detection_queue:
-                        frame_sent = False
-                        retry_count = 0
-                        max_retries = 20  # 增加重试次数
-                        while not frame_sent and retry_count < max_retries:
-                            try:
-                                detection_queue.put_nowait({
-                                    'frame_id': frame_id,
-                                    'frame': frame.copy(),
-                                    'frame_number': frame_number,
-                                    'timestamp': timestamp,
-                                    'device_id': device_id_from_data
-                                })
-                                frame_sent = True
-                                if frame_number % 10 == 0:
-                                    logger.info(f"✅ 抽帧器 [{device_id_from_data}]: {frame_id} (帧号: {frame_number})")
-                            except queue.Full:
-                                retry_count += 1
-                                if retry_count < max_retries:
-                                    # 如果队列持续满，尝试丢弃最旧的帧（仅在重试多次后）
-                                    if retry_count >= 15:
-                                        try:
-                                            # 尝试获取并丢弃一个旧帧
-                                            detection_queue.get_nowait()
-                                            logger.debug(f"🔄 设备 {device_id_from_data} 检测队列满，丢弃最旧帧以腾出空间")
-                                        except queue.Empty:
-                                            pass
-                                    time.sleep(0.01)
-                                else:
-                                    logger.warning(f"⚠️  设备 {device_id_from_data} 检测队列已满，帧 {frame_id} 多次重试失败（队列大小: {DETECTION_QUEUE_SIZE}, 当前队列长度: {detection_queue.qsize()}）")
+                    frame_data = extract_queue.get(timeout=0.1)
+                    break  # 成功获取到一个帧，跳出循环
                 except queue.Empty:
                     continue
                 except Exception as e:
-                    logger.error(f"❌ 设备 {device_id} 抽帧器异常: {str(e)}", exc_info=True)
-            
-            # 优化CPU占用：如果本轮没有工作，增加sleep时间
-            if not has_work:
-                time.sleep(0.05)  # 50ms，减少空轮询
+                    logger.error(f"❌ 设备 {device_id} 队列获取异常: {str(e)}")
+                    continue
+
+            if frame_data is not None:
+                # 处理帧
+                frame = frame_data['frame']
+                frame_number = frame_data['frame_number']
+                timestamp = frame_data['timestamp']
+                device_id_from_data = frame_data.get('device_id', device_id)
+                frame_id = f"{device_id_from_data}_frame_{frame_number}_{int(timestamp)}"
+
+                # 将帧发送给YOLO检测（带设备ID和位置信息）
+                detection_queue = detection_queues.get(device_id_from_data)
+                if detection_queue:
+                    try:
+                        detection_queue.put({
+                            'frame_id': frame_id,
+                            'frame': frame.copy(),
+                            'frame_number': frame_number,
+                            'timestamp': timestamp,
+                            'device_id': device_id_from_data
+                        }, timeout=0.2)
+                        if frame_number % 10 == 0:
+                            logger.info(f"✅ 抽帧器 [{device_id_from_data}]: {frame_id} (帧号: {frame_number})")
+                    except queue.Full:
+                        logger.warning(f"⚠️  设备 {device_id_from_data} 检测队列已满，丢弃帧 {frame_id}（队列大小: {DETECTION_QUEUE_SIZE}）")
+                        # 尝试丢弃一个旧帧以腾出空间
+                        try:
+                            detection_queue.get_nowait()
+                            logger.debug(f"🔄 设备 {device_id_from_data} 检测队列满，丢弃最旧帧以腾出空间")
+                        except queue.Empty:
+                            pass
+
+                idle_count = 0  # 重置空闲计数器
             else:
-                time.sleep(0.01)  # 10ms，有工作时短暂休眠
-            
+                # 没有找到工作，增加空闲计数并采用指数退避休眠
+                idle_count += 1
+                sleep_time = min(0.05 * (2 ** idle_count), 1.0)  # 指数退避，最大1秒
+                time.sleep(sleep_time)
+
         except Exception as e:
             logger.error(f"❌ 抽帧器异常: {str(e)}", exc_info=True)
             time.sleep(1)
-    
+
     logger.info("📹 抽帧器线程停止")
 
 
@@ -2102,168 +2211,159 @@ def draw_detections(frame, tracked_detections, frame_number=None, tracking_enabl
 def yolo_detection_worker(worker_id: int):
     """YOLO检测工作线程：使用YOLO模型进行识别和画框（多摄像头并行）"""
     logger.info(f"🤖 YOLO检测线程 {worker_id} 启动（多摄像头并行）")
-    
+
     consecutive_errors = 0
     max_consecutive_errors = 10
-    
+    idle_count = 0
+
     while not stop_event.is_set():
         try:
-            has_work = False
-            # 遍历所有设备的检测队列
-            for device_id, detection_queue in detection_queues.items():
+            # 尝试从每个设备的队列中获取检测数据（带超时）
+            device_queue_items = list(detection_queues.items())
+            detection_data = None
+            device_id = None
+            detection_queue = None
+
+            for device_id, detection_queue in device_queue_items:
                 try:
-                    detection_data = detection_queue.get_nowait()
-                    frame = detection_data['frame']
-                    frame_number = detection_data['frame_number']
-                    timestamp = detection_data['timestamp']
-                    device_id_from_data = detection_data.get('device_id', device_id)
-                    frame_id = detection_data.get('frame_id', f"{device_id_from_data}_frame_{frame_number}")
-                    
-                    has_work = True
-                    consecutive_errors = 0  # 重置错误计数
-                    
-                    # 减少日志输出
-                    if frame_number % 10 == 0:
-                        logger.info(f"🔍 [Worker {worker_id}] 开始检测: {frame_id}")
-                    
-                    # 使用所有YOLO模型进行检测（合并结果，优化参数以降低CPU占用）
-                    all_detections = []
-                    try:
-                        for model_id, yolo_model in yolo_models.items():
-                            try:
-                                # 优化检测参数以降低CPU占用：
-                                # - imgsz: 降低检测分辨率（默认416，原640）
-                                # - conf: 保持默认置信度阈值
-                                # - iou: 保持默认IOU阈值
-                                # - device: 使用CPU（如果支持GPU可改为'cuda'）
-                                results = yolo_model(
-                                    frame,
-                                    conf=0.25,
-                                    iou=0.45,
-                                    imgsz=YOLO_IMG_SIZE,  # 使用配置的检测分辨率（默认416，原640）
-                                    verbose=False,
-                                    half=False,
-                                    device='cpu'
-                                )
-                                result = results[0]
-                                
-                                if result.boxes is not None and len(result.boxes) > 0:
-                                    boxes = result.boxes.xyxy.cpu().numpy()
-                                    confidences = result.boxes.conf.cpu().numpy()
-                                    class_ids = result.boxes.cls.cpu().numpy().astype(int)
-                                    
-                                    for box, conf, cls_id in zip(boxes, confidences, class_ids):
-                                        x1, y1, x2, y2 = map(int, box)
-                                        class_name = yolo_model.names[cls_id]
-                                        all_detections.append({
-                                            'class_id': int(cls_id),
-                                            'class_name': class_name,
-                                            'confidence': float(conf),
-                                            'bbox': [int(x1), int(y1), int(x2), int(y2)]
-                                        })
-                            except Exception as e:
-                                logger.error(f"❌ 模型 {model_id} 检测异常: {str(e)}", exc_info=True)
-                                continue
-                    except Exception as e:
-                        consecutive_errors += 1
-                        logger.error(f"❌ YOLO检测异常: {str(e)} (连续错误: {consecutive_errors})", exc_info=True)
-                        if consecutive_errors >= max_consecutive_errors:
-                            logger.error(f"❌ 连续错误过多，等待10秒后继续...")
-                            time.sleep(10)
-                            consecutive_errors = 0
-                        continue
-                    
-                    # 如果启用追踪，进行目标追踪
-                    tracked_detections = []
-                    if task_config and task_config.tracking_enabled:
-                        tracker = trackers.get(device_id_from_data)
-                        if tracker:
-                            tracked_detections = tracker.update(all_detections, frame_number, current_time=timestamp)
-                        else:
-                            tracked_detections = [dict(det, track_id=0, is_cached=False, first_seen_time=timestamp, duration=0.0) for det in all_detections]
-                    else:
-                        tracked_detections = [dict(det, track_id=0, is_cached=False, first_seen_time=timestamp, duration=0.0) for det in all_detections]
-                    
-                    # 在帧上绘制检测结果
-                    if tracked_detections:
-                        processed_frame = draw_detections(
-                            frame, 
-                            tracked_detections, 
-                            frame_number,
-                            tracking_enabled=task_config.tracking_enabled if task_config else False
-                        )
-                        if frame_number % 10 == 0:
-                            logger.info(f"🎨 [Worker {worker_id}] 帧 {frame_number} 绘制了 {len(tracked_detections)} 个检测框")
-                    else:
-                        processed_frame = frame.copy()
-                    
-                    # 构建检测结果列表（用于后续处理）
-                    detections = []
-                    for tracked_det in tracked_detections:
-                        detections.append({
-                            'track_id': tracked_det.get('track_id', 0),
-                            'class_id': tracked_det.get('class_id', 0),
-                            'class_name': tracked_det.get('class_name', 'unknown'),
-                            'confidence': tracked_det.get('confidence', 0.0),
-                            'bbox': tracked_det.get('bbox', []),
-                            'timestamp': timestamp,
-                            'frame_id': frame_id,
-                            'frame_number': frame_number,
-                            'is_cached': tracked_det.get('is_cached', False),
-                            'first_seen_time': tracked_det.get('first_seen_time', timestamp),
-                            'duration': tracked_det.get('duration', 0.0)
-                        })
-                    
-                    # 将处理后的帧发送到推帧队列
-                    push_queue = push_queues.get(device_id_from_data)
-                    if push_queue:
-                        frame_sent = False
-                        retry_count = 0
-                        max_retries = 20  # 增加重试次数
-                        while not frame_sent and retry_count < max_retries:
-                            try:
-                                push_queue.put_nowait({
-                                    'frame': processed_frame,
-                                    'frame_number': frame_number,
-                                    'detections': detections,
-                                    'device_id': device_id_from_data,
-                                    'timestamp': timestamp
-                                })
-                                frame_sent = True
-                                if frame_number % 10 == 0:
-                                    logger.info(f"✅ [Worker {worker_id}] 检测完成: {frame_id} (帧号: {frame_number}), 检测到 {len(detections)} 个目标")
-                            except queue.Full:
-                                retry_count += 1
-                                if retry_count < max_retries:
-                                    # 如果队列持续满，尝试丢弃最旧的帧（仅在重试多次后）
-                                    if retry_count >= 15:
-                                        try:
-                                            # 尝试获取并丢弃一个旧帧
-                                            push_queue.get_nowait()
-                                            logger.debug(f"🔄 设备 {device_id_from_data} 推帧队列满，丢弃最旧帧以腾出空间")
-                                        except queue.Empty:
-                                            pass
-                                    time.sleep(0.01)
-                                else:
-                                    logger.warning(f"⚠️  设备 {device_id_from_data} 推帧队列已满，帧 {frame_id} 多次重试失败（队列大小: {PUSH_QUEUE_SIZE}, 当前队列长度: {push_queue.qsize()}）")
+                    detection_data = detection_queue.get(timeout=0.1)
+                    break  # 成功获取到一个帧，跳出循环
                 except queue.Empty:
                     continue
                 except Exception as e:
+                    logger.error(f"❌ 设备 {device_id} 队列获取异常: {str(e)}")
+                    continue
+
+            if detection_data is not None:
+                # 处理检测数据
+                frame = detection_data['frame']
+                frame_number = detection_data['frame_number']
+                timestamp = detection_data['timestamp']
+                device_id_from_data = detection_data.get('device_id', device_id)
+                frame_id = detection_data.get('frame_id', f"{device_id_from_data}_frame_{frame_number}")
+
+                consecutive_errors = 0  # 重置错误计数
+                idle_count = 0  # 重置空闲计数器
+
+                # 减少日志输出
+                if frame_number % 10 == 0:
+                    logger.info(f"🔍 [Worker {worker_id}] 开始检测: {frame_id}")
+
+                # 使用所有YOLO模型进行检测（合并结果，优化参数以降低CPU占用）
+                all_detections = []
+                try:
+                    for model_id, yolo_model in yolo_models.items():
+                        try:
+                            # 优化检测参数以降低CPU占用：
+                            # - imgsz: 降低检测分辨率（默认416，原640）
+                            # - conf: 保持默认置信度阈值
+                            # - iou: 保持默认IOU阈值
+                            # - device: 使用CPU（如果支持GPU可改为'cuda'）
+                            results = yolo_model(
+                                frame,
+                                conf=0.25,
+                                iou=0.45,
+                                imgsz=YOLO_IMG_SIZE,  # 使用配置的检测分辨率（默认416，原640）
+                                verbose=False,
+                                half=False,
+                                device='cpu'
+                            )
+                            result = results[0]
+
+                            if result.boxes is not None and len(result.boxes) > 0:
+                                boxes = result.boxes.xyxy.cpu().numpy()
+                                confidences = result.boxes.conf.cpu().numpy()
+                                class_ids = result.boxes.cls.cpu().numpy().astype(int)
+
+                                for box, conf, cls_id in zip(boxes, confidences, class_ids):
+                                    x1, y1, x2, y2 = map(int, box)
+                                    class_name = yolo_model.names[cls_id]
+                                    all_detections.append({
+                                        'class_id': int(cls_id),
+                                        'class_name': class_name,
+                                        'confidence': float(conf),
+                                        'bbox': [int(x1), int(y1), int(x2), int(y2)]
+                                    })
+                        except Exception as e:
+                            logger.error(f"❌ 模型 {model_id} 检测异常: {str(e)}", exc_info=True)
+                            continue
+                except Exception as e:
                     consecutive_errors += 1
-                    logger.error(f"❌ 设备 {device_id} YOLO检测异常: {str(e)} (连续错误: {consecutive_errors})", exc_info=True)
+                    logger.error(f"❌ YOLO检测异常: {str(e)} (连续错误: {consecutive_errors})", exc_info=True)
                     if consecutive_errors >= max_consecutive_errors:
                         logger.error(f"❌ 连续错误过多，等待10秒后继续...")
                         time.sleep(10)
                         consecutive_errors = 0
+                    continue
+
+                # 如果启用追踪，进行目标追踪
+                tracked_detections = []
+                if task_config and task_config.tracking_enabled:
+                    tracker = trackers.get(device_id_from_data)
+                    if tracker:
+                        tracked_detections = tracker.update(all_detections, frame_number, current_time=timestamp)
                     else:
-                        time.sleep(1)
-            
-            # 优化CPU占用：如果本轮没有工作，增加sleep时间
-            if not has_work:
-                time.sleep(0.05)  # 50ms，减少空轮询
+                        tracked_detections = [dict(det, track_id=0, is_cached=False, first_seen_time=timestamp, duration=0.0) for det in all_detections]
+                else:
+                    tracked_detections = [dict(det, track_id=0, is_cached=False, first_seen_time=timestamp, duration=0.0) for det in all_detections]
+
+                # 在帧上绘制检测结果
+                if tracked_detections:
+                    processed_frame = draw_detections(
+                        frame,
+                        tracked_detections,
+                        frame_number,
+                        tracking_enabled=task_config.tracking_enabled if task_config else False
+                    )
+                    if frame_number % 10 == 0:
+                        logger.info(f"🎨 [Worker {worker_id}] 帧 {frame_number} 绘制了 {len(tracked_detections)} 个检测框")
+                else:
+                    processed_frame = frame.copy()
+
+                # 构建检测结果列表（用于后续处理）
+                detections = []
+                for tracked_det in tracked_detections:
+                    detections.append({
+                        'track_id': tracked_det.get('track_id', 0),
+                        'class_id': tracked_det.get('class_id', 0),
+                        'class_name': tracked_det.get('class_name', 'unknown'),
+                        'confidence': tracked_det.get('confidence', 0.0),
+                        'bbox': tracked_det.get('bbox', []),
+                        'timestamp': timestamp,
+                        'frame_id': frame_id,
+                        'frame_number': frame_number,
+                        'is_cached': tracked_det.get('is_cached', False),
+                        'first_seen_time': tracked_det.get('first_seen_time', timestamp),
+                        'duration': tracked_det.get('duration', 0.0)
+                    })
+
+                # 将处理后的帧发送到推帧队列（带超时）
+                push_queue = push_queues.get(device_id_from_data)
+                if push_queue:
+                    try:
+                        push_queue.put({
+                            'frame': processed_frame,
+                            'frame_number': frame_number,
+                            'detections': detections,
+                            'device_id': device_id_from_data,
+                            'timestamp': timestamp
+                        }, timeout=0.2)
+                        if frame_number % 10 == 0:
+                            logger.info(f"✅ [Worker {worker_id}] 检测完成: {frame_id} (帧号: {frame_number}), 检测到 {len(detections)} 个目标")
+                    except queue.Full:
+                        logger.warning(f"⚠️  设备 {device_id_from_data} 推帧队列已满，丢弃帧 {frame_id}（队列大小: {PUSH_QUEUE_SIZE}）")
+                        # 尝试丢弃一个旧帧以腾出空间
+                        try:
+                            push_queue.get_nowait()
+                            logger.debug(f"🔄 设备 {device_id_from_data} 推帧队列满，丢弃最旧帧以腾出空间")
+                        except queue.Empty:
+                            pass
             else:
-                time.sleep(0.01)  # 10ms，有工作时短暂休眠
-            
+                # 没有找到工作，增加空闲计数并采用指数退避休眠
+                idle_count += 1
+                sleep_time = min(0.05 * (2 ** idle_count), 1.0)  # 指数退避，最大1秒
+                time.sleep(sleep_time)
+
         except Exception as e:
             consecutive_errors += 1
             logger.error(f"❌ YOLO检测异常: {str(e)} (连续错误: {consecutive_errors})", exc_info=True)
@@ -2273,7 +2373,7 @@ def yolo_detection_worker(worker_id: int):
                 consecutive_errors = 0
             else:
                 time.sleep(1)
-    
+
     logger.info(f"🤖 YOLO检测线程 {worker_id} 停止")
 
 
@@ -2322,11 +2422,18 @@ def cleanup_all_resources():
             except:
                 pass
         device_pusher_stderr_threads.pop(device_id, None)
-    
+
+    # 清理YOLO线程池
+    global yolo_executor
+    if yolo_executor:
+        logger.info("🛑 停止YOLO线程池...")
+        yolo_executor.shutdown(wait=False)
+        yolo_executor = None
+
     # 清理其他资源
     device_pusher_stderr_buffers.clear()
     device_pusher_stderr_locks.clear()
-    
+
     logger.info("✅ 所有资源已清理")
 
 
@@ -2389,18 +2496,24 @@ def main():
     
     # 启动YOLO检测线程（处理所有摄像头，支持多线程）
     logger.info(f"🤖 启动 {YOLO_WORKER_THREADS} 个YOLO检测线程（多摄像头并行）...")
-    yolo_threads = []
+    global yolo_executor
+    yolo_executor = concurrent.futures.ThreadPoolExecutor(max_workers=YOLO_WORKER_THREADS, thread_name_prefix='yolo_worker')
+    yolo_futures = []
     for worker_id in range(1, YOLO_WORKER_THREADS + 1):
-        yolo_thread = threading.Thread(target=yolo_detection_worker, args=(worker_id,), daemon=True)
-        yolo_thread.start()
-        yolo_threads.append(yolo_thread)
+        future = yolo_executor.submit(yolo_detection_worker, worker_id)
+        yolo_futures.append(future)
         logger.info(f"   ✅ YOLO检测线程 {worker_id} 已启动")
     
     # 启动心跳上报线程
     logger.info("💓 启动心跳上报线程...")
     heartbeat_thread = threading.Thread(target=heartbeat_worker, daemon=True)
     heartbeat_thread.start()
-    
+
+    # 启动性能监控线程
+    logger.info("📊 启动性能监控线程...")
+    monitor_thread = threading.Thread(target=monitor_performance, daemon=True)
+    monitor_thread.start()
+
     # 启动SRS录像清理线程
     logger.info("🧹 启动SRS录像清理线程...")
     srs_cleanup_thread = threading.Thread(target=srs_recording_cleanup_worker, daemon=True)

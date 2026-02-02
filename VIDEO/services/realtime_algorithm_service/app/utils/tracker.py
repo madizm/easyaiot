@@ -35,11 +35,11 @@ class SimpleTracker:
         self.lock = threading.Lock()
     
     def calculate_box_similarity(self, box1, box2):
-        """计算两个框的相似度（基于IOU、中心点距离、形状相似度）"""
+        """计算两个框的相似度（基于IOU和中心点距离）"""
         xmin1, ymin1, xmax1, ymax1 = box1
         xmin2, ymin2, xmax2, ymax2 = box2
         w1, h1, w2, h2 = xmax1 - xmin1, ymax1 - ymin1, xmax2 - xmin2, ymax2 - ymin2
-        
+
         # 计算IOU
         inter = max(0, min(xmax1, xmax2) - max(xmin1, xmin2)) * max(0, min(ymax1, ymax2) - max(ymin1, ymin2))
         union = w1 * h1 + w2 * h2 - inter
@@ -47,14 +47,7 @@ class SimpleTracker:
             iou = 0
         else:
             iou = inter / union
-        
-        # 计算包围框
-        xmin = min(xmin1, xmin2)
-        ymin = min(ymin1, ymin2)
-        xmax = max(xmax1, xmax2)
-        ymax = max(ymax1, ymax2)
-        w, h = xmax - xmin, ymax - ymin
-        
+
         # 中心点距离相似度（0~1）
         try:
             center1_x = (xmin1 + xmax1) / 2
@@ -62,7 +55,12 @@ class SimpleTracker:
             center2_x = (xmin2 + xmax2) / 2
             center2_y = (ymin2 + ymax2) / 2
             center_distance = np.sqrt((center1_x - center2_x) ** 2 + (center1_y - center2_y) ** 2)
-            diagonal = np.sqrt(w ** 2 + h ** 2)
+            # 归一化距离，使用包围框对角线长度
+            xmin = min(xmin1, xmin2)
+            ymin = min(ymin1, ymin2)
+            xmax = max(xmax1, xmax2)
+            ymax = max(ymax1, ymax2)
+            diagonal = np.sqrt((xmax - xmin) ** 2 + (ymax - ymin) ** 2)
             if diagonal > 0:
                 normalized_distance = center_distance / (diagonal * 1.5)
                 dis_sim = max(0, 1 - normalized_distance)
@@ -70,21 +68,9 @@ class SimpleTracker:
                 dis_sim = 1
         except (ZeroDivisionError, ValueError):
             dis_sim = 1
-        
-        # 形状相似度
-        try:
-            if w > 0 and h > 0:
-                width_diff = abs(w1 - w2) / max(w, 1)
-                height_diff = abs(h1 - h2) / max(h, 1)
-                shape_sim = 1 - (width_diff + height_diff) / 2
-                shape_sim = max(0, shape_sim)
-            else:
-                shape_sim = 1
-        except (ZeroDivisionError, ValueError):
-            shape_sim = 1
-        
-        # 综合相似度：IOU * 0.6 + 中心点距离 * 0.35 + 形状 * 0.05
-        return iou * 0.6 + dis_sim * 0.35 + shape_sim * 0.05
+
+        # 综合相似度：IOU * 0.7 + 中心点距离 * 0.3
+        return iou * 0.7 + dis_sim * 0.3
     
     def update(self, detections: List[Dict], frame_number: int, current_time: Optional[float] = None) -> List[Dict]:
         """
