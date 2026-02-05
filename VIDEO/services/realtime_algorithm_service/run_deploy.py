@@ -12,8 +12,6 @@ import os
 import sys
 import time
 import threading
-import concurrent.futures
-import psutil
 import logging
 import subprocess
 import signal
@@ -138,6 +136,9 @@ device_pushers = {}  # {device_id: subprocess.Popen}
 device_pusher_stderr_threads = {}  # {device_id: threading.Thread}
 device_pusher_stderr_buffers = {}  # {device_id: list} 存储stderr输出
 device_pusher_stderr_locks = {}  # {device_id: threading.Lock}
+# 设备编码器状态：记录每个设备实际使用的编码器（用于硬件编码失败时自动回退）
+device_codec_status = {}  # {device_id: 'h264_nvenc' | 'libx264'}
+device_codec_locks = {}  # {device_id: threading.Lock} 保护编码器状态
 # 告警抑制：记录每个设备上次告警推送时间
 last_alert_time = {}  # {device_id: timestamp}
 alert_suppression_interval = 5.0  # 告警抑制间隔：5秒
@@ -145,12 +146,12 @@ alert_time_lock = threading.Lock()  # 告警时间戳锁，确保线程安全
 
 # 配置参数（从数据库读取，支持环境变量覆盖以降低CPU占用）
 # 帧率：降低可减少CPU占用和推流速度
-SOURCE_FPS = int(os.getenv('SOURCE_FPS', '10'))  # 默认10fps（原15fps）进一步降低CPU占用
+SOURCE_FPS = int(os.getenv('SOURCE_FPS', '15'))  # 默认15fps（原25fps）
 # 分辨率：降低可大幅减少CPU占用和推流速度
 TARGET_WIDTH = int(os.getenv('TARGET_WIDTH', '640'))  # 默认640（原1280）
 TARGET_HEIGHT = int(os.getenv('TARGET_HEIGHT', '360'))  # 默认360（原720）
 TARGET_RESOLUTION = (TARGET_WIDTH, TARGET_HEIGHT)
-EXTRACT_INTERVAL = int(os.getenv('EXTRACT_INTERVAL', '8'))  # 增加抽帧间隔，降低CPU占用
+EXTRACT_INTERVAL = int(os.getenv('EXTRACT_INTERVAL', '5'))
 BUFFER_SIZE = int(os.getenv('BUFFER_SIZE', '70'))
 MIN_BUFFER_FRAMES = int(os.getenv('MIN_BUFFER_FRAMES', '15'))
 MAX_WAIT_TIME = float(os.getenv('MAX_WAIT_TIME', '0.08'))
@@ -165,37 +166,24 @@ FFMPEG_VIDEO_BITRATE = FFMPEG_VIDEO_BITRATE_ENV.strip() if FFMPEG_VIDEO_BITRATE_
 
 # 编码线程数：None表示自动，可设置为较小值降低CPU
 # 处理空字符串的情况，确保只有有效的数字字符串才会被使用
-FFMPEG_THREADS_ENV = os.getenv('FFMPEG_THREADS', '1')
+FFMPEG_THREADS_ENV = os.getenv('FFMPEG_THREADS', None)
 FFMPEG_THREADS = None if not FFMPEG_THREADS_ENV or FFMPEG_THREADS_ENV.strip() == '' else FFMPEG_THREADS_ENV.strip()
 # GOP大小：2秒一个关键帧（在SOURCE_FPS定义后计算）
 FFMPEG_GOP_SIZE_ENV = os.getenv('FFMPEG_GOP_SIZE', None)
 FFMPEG_GOP_SIZE = int(FFMPEG_GOP_SIZE_ENV) if FFMPEG_GOP_SIZE_ENV else (SOURCE_FPS * 2)
+
+# 硬件加速配置
+FFMPEG_HWACCEL_ENV = os.getenv('FFMPEG_HWACCEL', 'auto').strip().lower()
+FFMPEG_HWACCEL = FFMPEG_HWACCEL_ENV if FFMPEG_HWACCEL_ENV in ['auto', 'nvenc', 'cuvid', 'none'] else 'auto'
+
 # YOLO检测参数（优化以降低CPU占用）
-YOLO_IMG_SIZE = int(os.getenv('YOLO_IMG_SIZE', '320'))  # 检测分辨率：进一步降低可减少CPU占用（原416）
+YOLO_IMG_SIZE = int(os.getenv('YOLO_IMG_SIZE', '416'))  # 检测分辨率：降低可减少CPU占用（原640）
 # 队列大小配置（优化以处理高负载）
 DETECTION_QUEUE_SIZE = int(os.getenv('DETECTION_QUEUE_SIZE', '100'))  # 检测队列大小（默认100，原50）
 PUSH_QUEUE_SIZE = int(os.getenv('PUSH_QUEUE_SIZE', '100'))  # 推帧队列大小（默认100，原50）
 EXTRACT_QUEUE_SIZE = int(os.getenv('EXTRACT_QUEUE_SIZE', '50'))  # 抽帧队列大小（默认50）
 # 检测工作线程数量（优化以提升处理能力）
-CPU_COUNT = os.cpu_count() or 4
-YOLO_WORKER_THREADS = int(
-    os.getenv('YOLO_WORKER_THREADS', str(max(1, CPU_COUNT // 2))))  # YOLO检测线程数（默认使用一半CPU核心数，至少1个线程）
-
-# YOLO线程池执行器
-yolo_executor = None
-
-# 性能监控和自适应节流相关变量
-performance_stats = {
-    'cpu_percent': 0,
-    'cpu_percent_history': [],
-    'frame_rates': {},  # {device_id: fps}
-    'queue_sizes': {},  # {queue_name: size}
-    'total_frames_processed': 0,
-    'last_monitor_time': time.time()
-}
-performance_lock = threading.Lock()
-adaptive_extract_interval = EXTRACT_INTERVAL  # 动态调整的抽帧间隔
-adaptive_source_fps = SOURCE_FPS  # 动态调整的帧率
+YOLO_WORKER_THREADS = int(os.getenv('YOLO_WORKER_THREADS', '2'))  # YOLO检测线程数（默认2，原1）
 
 
 def download_model_file(model_id: int, model_path: str) -> Optional[str]:
@@ -819,94 +807,47 @@ def save_tracking_targets_periodically():
     logger.info("💾 追踪目标处理线程停止")
 
 
-def monitor_performance():
-    """性能监控和自适应节流线程"""
-    logger.info("📊 性能监控线程启动")
-
-    # 检查psutil是否可用
-    try:
-        import psutil
-        psutil_available = True
-    except ImportError:
-        logger.warning("⚠️  psutil库未安装，性能监控功能将禁用")
-        logger.warning("   请安装: pip install psutil")
-        psutil_available = False
-
-    while not stop_event.is_set():
-        # 如果psutil不可用，休眠后继续
-        if not psutil_available:
-            time.sleep(10)
-            continue
-
+def check_hardware_acceleration():
+    """检测硬件加速是否可用
+    
+    Returns:
+        tuple: (use_nvenc: bool, use_cuvid: bool, codec_name: str)
+    """
+    use_nvenc = False
+    use_cuvid = False
+    codec_name = 'libx264'
+    
+    # 如果明确设置为none，使用软件编码
+    if FFMPEG_HWACCEL == 'none':
+        logger.info("硬件加速已禁用，使用软件编码 libx264")
+        return False, False, 'libx264'
+    
+    # 如果明确设置为nvenc，尝试使用硬件编码
+    if FFMPEG_HWACCEL in ['nvenc', 'auto']:
         try:
-            # 获取CPU使用率
-            cpu_percent = psutil.cpu_percent(interval=5)
-
-            # 更新性能统计数据
-            with performance_lock:
-                performance_stats['cpu_percent'] = cpu_percent
-                performance_stats['cpu_percent_history'].append(cpu_percent)
-                # 只保留最近30个记录（约2.5分钟）
-                if len(performance_stats['cpu_percent_history']) > 30:
-                    performance_stats['cpu_percent_history'] = performance_stats['cpu_percent_history'][-30:]
-
-                # 更新队列大小信息
-                performance_stats['queue_sizes'] = {
-                    'extract_queues': sum(q.qsize() for q in extract_queues.values()),
-                    'detection_queues': sum(q.qsize() for q in detection_queues.values()),
-                    'push_queues': sum(q.qsize() for q in push_queues.values())
-                }
-
-            # 自适应节流逻辑
-            global adaptive_extract_interval, adaptive_source_fps, EXTRACT_INTERVAL, SOURCE_FPS
-            with performance_lock:
-                # 计算平均CPU使用率（基于最近10个样本）
-                recent_cpu = performance_stats['cpu_percent_history'][-10:] if len(
-                    performance_stats['cpu_percent_history']) >= 10 else performance_stats['cpu_percent_history']
-                avg_cpu = sum(recent_cpu) / len(recent_cpu) if recent_cpu else cpu_percent
-
-                # 节流策略
-                if avg_cpu > 80:  # CPU > 80%，启用节流
-                    # 增加抽帧间隔（降低检测频率）
-                    new_extract_interval = min(EXTRACT_INTERVAL * 2, 20)
-                    # 降低帧率
-                    new_source_fps = max(SOURCE_FPS // 2, 5)
-
-                    if new_extract_interval != EXTRACT_INTERVAL or new_source_fps != SOURCE_FPS:
-                        EXTRACT_INTERVAL = new_extract_interval
-                        SOURCE_FPS = new_source_fps
-                        logger.warning(
-                            f"🚨 高CPU负载检测: {avg_cpu:.1f}%，启用节流: 抽帧间隔={EXTRACT_INTERVAL}, 帧率={SOURCE_FPS}fps")
-
-                elif avg_cpu < 50 and (EXTRACT_INTERVAL > 8 or SOURCE_FPS < 10):  # CPU < 50%，恢复性能
-                    # 逐步恢复性能
-                    if EXTRACT_INTERVAL > 8:
-                        EXTRACT_INTERVAL = max(EXTRACT_INTERVAL // 2, 8)
-                    if SOURCE_FPS < 10:
-                        SOURCE_FPS = min(SOURCE_FPS * 2, 10)
-
-                    if EXTRACT_INTERVAL < 8 or SOURCE_FPS > 5:
-                        logger.info(
-                            f"✅ CPU负载正常: {avg_cpu:.1f}%，恢复性能: 抽帧间隔={EXTRACT_INTERVAL}, 帧率={SOURCE_FPS}fps")
-
-            # 记录性能日志（每30秒一次）
-            current_time = time.time()
-            if current_time - performance_stats['last_monitor_time'] > 30:
-                with performance_lock:
-                    logger.info(f"📊 性能监控: CPU={cpu_percent:.1f}%, 队列大小={performance_stats['queue_sizes']}")
-                    performance_stats['last_monitor_time'] = current_time
-
-            # 每5秒监控一次
-            for _ in range(10):
-                if stop_event.is_set():
-                    break
-                time.sleep(0.5)
-
+            # 检查FFmpeg是否支持h264_nvenc编码器
+            result = subprocess.run(
+                ['ffmpeg', '-hide_banner', '-encoders'],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=5
+            )
+            output = result.stdout.decode('utf-8', errors='ignore') + result.stderr.decode('utf-8', errors='ignore')
+            
+            if 'h264_nvenc' in output:
+                use_nvenc = True
+                codec_name = 'h264_nvenc'
+                logger.info("✅ 检测到硬件加速支持，使用 h264_nvenc 编码器")
+            else:
+                logger.info("⚠️  未检测到 h264_nvenc 编码器，使用软件编码 libx264")
         except Exception as e:
-            logger.error(f"性能监控线程异常: {str(e)}", exc_info=True)
-            time.sleep(10)
+            logger.warning(f"检测硬件加速时出错: {str(e)}，使用软件编码 libx264")
+    
+    return use_nvenc, use_cuvid, codec_name
 
-    logger.info("📊 性能监控线程停止")
+
+# 在启动时检测硬件加速
+_hwaccel_nvenc, _hwaccel_cuvid, _hwaccel_codec = check_hardware_acceleration()
 
 
 def check_rtmp_server_connection(rtmp_url: str) -> bool:
@@ -1260,6 +1201,11 @@ def buffer_streamer_worker(device_id: str):
     if device_id not in device_pusher_stderr_buffers:
         device_pusher_stderr_buffers[device_id] = []
         device_pusher_stderr_locks[device_id] = threading.Lock()
+    
+    # 初始化设备编码器状态（如果不存在，使用全局配置）
+    if device_id not in device_codec_status:
+        device_codec_status[device_id] = _hwaccel_codec
+        device_codec_locks[device_id] = threading.Lock()
 
     # 流畅度优化：基于时间戳的帧率控制
     frame_interval = 1.0 / SOURCE_FPS
@@ -1422,6 +1368,7 @@ def buffer_streamer_worker(device_id: str):
 
                     # 提取关键错误信息（过滤掉版本信息等）
                     error_lines = []
+                    hw_encoder_error = False  # 标记是否是硬件编码器错误
                     for line in stderr_lines:
                         line_lower = line.lower()
                         # 跳过版本信息、配置信息等
@@ -1433,6 +1380,9 @@ def buffer_streamer_worker(device_id: str):
                                ['error', 'failed', 'warning', 'cannot', 'unable', 'invalid', 'connection refused',
                                 'connection reset', 'timeout']):
                             error_lines.append(line)
+                            # 检测硬件编码器相关错误
+                            if any(hw_err in line_lower for hw_err in ['cannot load libcuda', 'libcuda.so', 'h264_nvenc', 'nvenc', 'cuda']):
+                                hw_encoder_error = True
 
                     if error_lines:
                         logger.warning(f"   关键错误信息:")
@@ -1443,6 +1393,38 @@ def buffer_streamer_worker(device_id: str):
                         logger.warning(f"   最后输出: {stderr_lines[-3:]}")
                     else:
                         logger.warning(f"   未捕获到错误信息，可能是进程启动失败或RTMP服务器连接问题")
+                    
+                    # 如果是硬件编码器错误，自动切换到软件编码
+                    should_retry_with_software = False
+                    if hw_encoder_error:
+                        # 初始化设备编码器锁（如果不存在）
+                        if device_id not in device_codec_locks:
+                            device_codec_locks[device_id] = threading.Lock()
+                        
+                        with device_codec_locks[device_id]:
+                            current_codec = device_codec_status.get(device_id, _hwaccel_codec)
+                            if current_codec == 'h264_nvenc':
+                                logger.warning(f"🔄 设备 {device_id} 硬件编码器失败，自动切换到软件编码 (libx264)")
+                                device_codec_status[device_id] = 'libx264'
+                                should_retry_with_software = True
+                            else:
+                                # 已经使用软件编码，不需要切换
+                                pass
+                    
+                    # 如果切换到软件编码，确保进程被重置以便立即重试
+                    if should_retry_with_software:
+                        # 关闭旧进程（如果还在运行）
+                        if pusher_process and pusher_process.poll() is None:
+                            try:
+                                pusher_process.stdin.close()
+                                pusher_process.terminate()
+                                pusher_process.wait(timeout=2)
+                            except:
+                                if pusher_process.poll() is None:
+                                    pusher_process.kill()
+                        pusher_process = None
+                        device_pushers.pop(device_id, None)
+                        logger.info(f"🔄 设备 {device_id} 将使用软件编码重新启动推送进程...")
 
                     # 检查RTMP服务器连接状态（仅在首次失败时检查，避免频繁检查）
                     if pusher_retry_count == 0:
@@ -1492,11 +1474,11 @@ def buffer_streamer_worker(device_id: str):
 
                     # 构建 ffmpeg 命令（优化版本：低CPU占用、低推流速度）
                     # 优化参数说明：
-                    # -preset ultrafast: 最快编码，最低CPU占用
+                    # -preset ultrafast: 最快编码，最低CPU占用（软件编码）
                     # -b:v 500k: 降低视频比特率，减少推流速度
-                    # -threads: 限制编码线程数，降低CPU占用
+                    # -threads: 限制编码线程数，降低CPU占用（仅软件编码）
                     # -g: GOP 大小（关键帧间隔），增大可减少关键帧频率
-                    # -keyint_min: 最小关键帧间隔
+                    # -keyint_min: 最小关键帧间隔（仅软件编码）
                     # -f flv: 输出格式为 FLV（RTMP 标准格式）
                     ffmpeg_cmd = [
                         "ffmpeg",
@@ -1508,42 +1490,66 @@ def buffer_streamer_worker(device_id: str):
                         "-s", f"{width}x{height}",
                         "-r", str(SOURCE_FPS),
                         "-i", "-",
-                        "-c:v", "libx264",
-                        "-b:v", FFMPEG_VIDEO_BITRATE,  # 使用配置的比特率（默认500k）
-                        "-pix_fmt", "yuv420p",
-                        "-preset", FFMPEG_PRESET,  # 使用配置的预设（默认ultrafast）
-                        "-g", str(FFMPEG_GOP_SIZE),  # GOP 大小：2秒一个关键帧
-                        "-keyint_min", str(SOURCE_FPS),  # 最小关键帧间隔：1秒
-                        "-f", "flv",
                     ]
-
-                    # 如果配置了线程数限制，添加线程参数
-                    # 确保 FFMPEG_THREADS 是有效的非空值
-                    if FFMPEG_THREADS is not None and str(FFMPEG_THREADS).strip():
-                        try:
-                            # 验证是否为有效的整数
-                            threads_value = int(FFMPEG_THREADS)
-                            if threads_value > 0:
-                                # 限制最大线程数，防止CPU过载
-                                if threads_value > 4:
-                                    logger.warning(
-                                        f"   ⚠️  FFMPEG_THREADS 值过高 ({threads_value})，限制为4线程以降低CPU占用")
-                                    threads_value = 4
-                                ffmpeg_cmd.extend(["-threads", str(threads_value)])
-                            else:
+                    
+                    # 根据硬件加速配置和设备编码器状态选择编码器
+                    # 初始化设备编码器锁（如果不存在）
+                    if device_id not in device_codec_locks:
+                        device_codec_locks[device_id] = threading.Lock()
+                    
+                    # 获取设备实际使用的编码器（如果设备有失败记录，使用软件编码；否则使用全局配置）
+                    with device_codec_locks[device_id]:
+                        device_codec = device_codec_status.get(device_id, _hwaccel_codec)
+                    
+                    # 根据编码器类型构建FFmpeg命令
+                    if device_codec == 'h264_nvenc':
+                        # 使用NVIDIA硬件编码器
+                        ffmpeg_cmd.extend([
+                            "-c:v", "h264_nvenc",
+                            "-b:v", FFMPEG_VIDEO_BITRATE,
+                            "-pix_fmt", "yuv420p",
+                            "-preset", "p4",  # NVENC预设：p1(最快)到p7(最慢)，p4为平衡
+                            "-tune", "ll",  # 低延迟调优
+                            "-gpu", "0",  # 使用第一个GPU
+                            "-g", str(FFMPEG_GOP_SIZE),
+                            "-rc", "cbr",  # 恒定比特率模式
+                            "-rc-lookahead", "0",  # 禁用lookahead以降低延迟
+                            "-surfaces", "1",  # 最小表面数，降低延迟
+                            "-delay", "0",  # 无延迟
+                            "-f", "flv",
+                        ])
+                    else:
+                        # 使用软件编码器
+                        ffmpeg_cmd.extend([
+                            "-c:v", "libx264",
+                            "-b:v", FFMPEG_VIDEO_BITRATE,  # 使用配置的比特率（默认500k）
+                            "-pix_fmt", "yuv420p",
+                            "-preset", FFMPEG_PRESET,  # 使用配置的预设（默认ultrafast）
+                            "-g", str(FFMPEG_GOP_SIZE),  # GOP 大小：2秒一个关键帧
+                            "-keyint_min", str(SOURCE_FPS),  # 最小关键帧间隔：1秒
+                            "-f", "flv",
+                        ])
+                        # 如果配置了线程数限制，添加线程参数（仅软件编码）
+                        if FFMPEG_THREADS is not None and str(FFMPEG_THREADS).strip():
+                            try:
+                                # 验证是否为有效的整数
+                                threads_value = int(FFMPEG_THREADS)
+                                if threads_value > 0:
+                                    ffmpeg_cmd.extend(["-threads", str(threads_value)])
+                                else:
+                                    logger.warning(f"   ⚠️  FFMPEG_THREADS 值无效 ({FFMPEG_THREADS})，跳过线程数限制")
+                            except (ValueError, TypeError):
                                 logger.warning(f"   ⚠️  FFMPEG_THREADS 值无效 ({FFMPEG_THREADS})，跳过线程数限制")
-                        except (ValueError, TypeError):
-                            logger.warning(f"   ⚠️  FFMPEG_THREADS 值无效 ({FFMPEG_THREADS})，跳过线程数限制")
-
+                    
                     # 添加输出地址
                     ffmpeg_cmd.append(rtmp_url)
-
+                    
+                    codec_info = f"硬件编码 ({device_codec})" if device_codec == 'h264_nvenc' else f"软件编码 ({device_codec})"
                     logger.info(f"🚀 启动设备 {device_id} 推送进程（优化模式：低CPU占用）")
                     logger.info(f"   📺 推流地址: {rtmp_url}")
                     logger.info(f"   📐 尺寸: {width}x{height}, 帧率: {SOURCE_FPS}fps")
-                    logger.info(
-                        f"   🎬 编码预设: {FFMPEG_PRESET}, 比特率: {FFMPEG_VIDEO_BITRATE}, GOP: {FFMPEG_GOP_SIZE}")
-                    if FFMPEG_THREADS is not None and str(FFMPEG_THREADS).strip():
+                    logger.info(f"   🎬 编码器: {codec_info}, 比特率: {FFMPEG_VIDEO_BITRATE}, GOP: {FFMPEG_GOP_SIZE}")
+                    if device_codec != 'h264_nvenc' and FFMPEG_THREADS is not None and str(FFMPEG_THREADS).strip():
                         logger.info(f"   🧵 编码线程数: {FFMPEG_THREADS}")
                     logger.debug(f"   FFmpeg命令: {' '.join(ffmpeg_cmd)}")
                     logger.debug(f"   FFmpeg命令参数列表: {ffmpeg_cmd}")
@@ -1589,6 +1595,7 @@ def buffer_streamer_worker(device_id: str):
 
                             # 提取关键错误信息
                             key_errors = []
+                            hw_encoder_error = False  # 标记是否是硬件编码器错误
                             for line in error_lines:
                                 line_lower = line.lower()
                                 if any(skip in line_lower for skip in
@@ -1599,6 +1606,9 @@ def buffer_streamer_worker(device_id: str):
                                         'connection reset', 'timeout', 'no such file', 'permission denied', 'splitting',
                                         'option not found']):
                                     key_errors.append(line)
+                                    # 检测硬件编码器相关错误
+                                    if any(hw_err in line_lower for hw_err in ['cannot load libcuda', 'libcuda.so', 'h264_nvenc', 'nvenc', 'cuda']):
+                                        hw_encoder_error = True
 
                             if key_errors:
                                 logger.error(f"   关键错误:")
@@ -1608,6 +1618,27 @@ def buffer_streamer_worker(device_id: str):
                                 logger.error(f"   输出: {error_lines[-5:]}")
                             else:
                                 logger.error(f"   未捕获到错误信息，请检查RTMP服务器是否运行: {rtmp_url}")
+                            
+                            # 如果是硬件编码器错误，自动切换到软件编码并重新启动
+                            should_retry_with_software = False
+                            if hw_encoder_error:
+                                # 初始化设备编码器锁（如果不存在）
+                                if device_id not in device_codec_locks:
+                                    device_codec_locks[device_id] = threading.Lock()
+                                
+                                with device_codec_locks[device_id]:
+                                    current_codec = device_codec_status.get(device_id, _hwaccel_codec)
+                                    if current_codec == 'h264_nvenc':
+                                        logger.warning(f"🔄 设备 {device_id} 硬件编码器启动失败，自动切换到软件编码 (libx264)")
+                                        device_codec_status[device_id] = 'libx264'
+                                        should_retry_with_software = True
+                            
+                            # 如果切换到软件编码，重置进程以便立即重试
+                            if should_retry_with_software:
+                                pusher_process = None
+                                device_pushers.pop(device_id, None)
+                                logger.info(f"🔄 设备 {device_id} 将使用软件编码重新启动推送进程...")
+                                continue
 
                             # 检查RTMP服务器连接状态
                             if not check_rtmp_server_connection(rtmp_url):
@@ -2587,11 +2618,6 @@ def main():
     logger.info("💓 启动心跳上报线程...")
     heartbeat_thread = threading.Thread(target=heartbeat_worker, daemon=True)
     heartbeat_thread.start()
-
-    # 启动性能监控线程
-    logger.info("📊 启动性能监控线程...")
-    monitor_thread = threading.Thread(target=monitor_performance, daemon=True)
-    monitor_thread.start()
 
     # 启动SRS录像清理线程
     logger.info("🧹 启动SRS录像清理线程...")
