@@ -152,8 +152,8 @@ db_session = scoped_session(SessionLocal)
 
 # 配置参数
 SOURCE_FPS = int(os.getenv('SOURCE_FPS', '15'))  # 源流帧率
-TARGET_WIDTH = int(os.getenv('TARGET_WIDTH', '640'))  # 目标宽度
-TARGET_HEIGHT = int(os.getenv('TARGET_HEIGHT', '360'))  # 目标高度
+TARGET_WIDTH = int(os.getenv('TARGET_WIDTH', '1280'))  # 目标宽度
+TARGET_HEIGHT = int(os.getenv('TARGET_HEIGHT', '720'))  # 目标高度
 TARGET_RESOLUTION = (TARGET_WIDTH, TARGET_HEIGHT)
 EXTRACT_INTERVAL = int(os.getenv('EXTRACT_INTERVAL', '5'))  # 抽帧间隔（每N帧抽1帧）
 # 计算实际推流帧率（抽帧后的帧率）
@@ -168,16 +168,21 @@ FFMPEG_VIDEO_BITRATE = FFMPEG_VIDEO_BITRATE_ENV.strip() if FFMPEG_VIDEO_BITRATE_
 FFMPEG_THREADS_ENV = os.getenv('FFMPEG_THREADS', None)
 FFMPEG_THREADS = None if not FFMPEG_THREADS_ENV or FFMPEG_THREADS_ENV.strip() == '' else FFMPEG_THREADS_ENV.strip()
 FFMPEG_GOP_SIZE_ENV = os.getenv('FFMPEG_GOP_SIZE', None)
-FFMPEG_GOP_SIZE = int(FFMPEG_GOP_SIZE_ENV) if FFMPEG_GOP_SIZE_ENV else (SOURCE_FPS * 2)
+# 优化：减小GOP大小，提高关键帧频率，减少首帧加载时间
+# 默认GOP设为实际推流帧率（约1秒一个关键帧），而不是源流帧率的2倍
+# 这样可以更快地开始播放，减少转圈时间
+FFMPEG_GOP_SIZE = int(FFMPEG_GOP_SIZE_ENV) if FFMPEG_GOP_SIZE_ENV else max(1, TARGET_FPS)
+
+# 硬件加速配置
+FFMPEG_HWACCEL_ENV = os.getenv('FFMPEG_HWACCEL', 'auto').strip().lower()
+FFMPEG_HWACCEL = FFMPEG_HWACCEL_ENV if FFMPEG_HWACCEL_ENV in ['auto', 'nvenc', 'cuvid', 'none'] else 'auto'
 
 # 全局变量
 stop_event = threading.Event()
 task_config = None
-# 优化后的队列架构：使用两个队列避免帧反复进出
-# 原始帧队列：存储从RTSP读取的原始帧（未处理）
-raw_frame_queues = {}  # {device_id: queue.Queue}
-# 已处理帧队列：存储抽帧器处理后的帧（已标记为需要推送）
-processed_frame_queues = {}  # {device_id: queue.Queue}
+# 简化架构：单队列直接传递帧
+# 帧队列：存储从RTSP读取的帧，直接传递给推流器
+frame_queues = {}  # {device_id: queue.Queue}
 # 摄像头流连接（VideoCapture对象）
 device_caps = {}  # {device_id: cv2.VideoCapture}
 # 摄像头推送进程（FFmpeg进程）
@@ -208,13 +213,97 @@ def get_local_ip():
         return '127.0.0.1'
 
 
+def check_hardware_acceleration():
+    """检测硬件加速是否可用
+    
+    Returns:
+        tuple: (use_nvenc: bool, use_cuvid: bool, codec_name: str)
+    """
+    use_nvenc = False
+    use_cuvid = False
+    codec_name = 'libx264'
+    
+    # 如果明确设置为none，使用软件编码
+    if FFMPEG_HWACCEL == 'none':
+        logger.info("硬件加速已禁用，使用软件编码 libx264")
+        return False, False, 'libx264'
+    
+    # 如果明确设置为nvenc，尝试使用硬件编码
+    if FFMPEG_HWACCEL in ['nvenc', 'auto']:
+        try:
+            # 检查FFmpeg是否支持h264_nvenc编码器
+            result = subprocess.run(
+                ['ffmpeg', '-hide_banner', '-encoders'],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=5
+            )
+            output = result.stdout.decode('utf-8', errors='ignore') + result.stderr.decode('utf-8', errors='ignore')
+            
+            if 'h264_nvenc' in output:
+                # 进一步测试编码器是否真的可用（使用测试编码）
+                try:
+                    # 测试编码器是否能正常工作（使用很小的测试帧）
+                    test_cmd = [
+                        'ffmpeg', '-y', '-f', 'lavfi', '-i', 'testsrc=duration=1:size=640x360:rate=1',
+                        '-c:v', 'h264_nvenc', '-preset', 'p3', '-b:v', '500k',
+                        '-frames:v', '1', '-f', 'null', '-'
+                    ]
+                    test_result = subprocess.run(
+                        test_cmd,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        timeout=10
+                    )
+                    if test_result.returncode == 0:
+                        use_nvenc = True
+                        codec_name = 'h264_nvenc'
+                        logger.info("✅ 检测到硬件加速支持，使用 h264_nvenc 编码器")
+                    else:
+                        logger.warning("⚠️  h264_nvenc 编码器检测到但测试失败，使用软件编码 libx264")
+                        logger.debug(f"测试输出: {test_result.stderr.decode('utf-8', errors='ignore')[:200]}")
+                except Exception as test_e:
+                    logger.warning(f"⚠️  测试 h264_nvenc 编码器时出错: {str(test_e)}，使用软件编码 libx264")
+            else:
+                logger.info("⚠️  未检测到 h264_nvenc 编码器，使用软件编码 libx264")
+        except Exception as e:
+            logger.warning(f"检测硬件加速时出错: {str(e)}，使用软件编码 libx264")
+    
+    return use_nvenc, use_cuvid, codec_name
+
+
+def align_resolution(width: int, height: int, align: int = 16) -> tuple:
+    """对齐分辨率到指定倍数（h264_nvenc要求分辨率是16的倍数）
+    
+    Args:
+        width: 原始宽度
+        height: 原始高度
+        align: 对齐倍数，默认16
+    
+    Returns:
+        tuple: (对齐后的宽度, 对齐后的高度)
+    """
+    aligned_width = (width // align) * align
+    aligned_height = (height // align) * align
+    # 确保至少是align的倍数
+    if aligned_width < align:
+        aligned_width = align
+    if aligned_height < align:
+        aligned_height = align
+    return aligned_width, aligned_height
+
+
+# 在启动时检测硬件加速
+_hwaccel_nvenc, _hwaccel_cuvid, _hwaccel_codec = check_hardware_acceleration()
+
+
 def load_task_config():
     """加载任务配置"""
     global task_config
     
     try:
         with get_flask_app().app_context():
-            task = StreamForwardTask.query.get(TASK_ID)
+            task = db.session.get(StreamForwardTask, TASK_ID)
             if not task:
                 logger.error(f"推流转发任务不存在: TASK_ID={TASK_ID}")
                 return False
@@ -321,23 +410,23 @@ def read_ffmpeg_stderr(device_id: str, stderr_pipe, stderr_buffer: list, stderr_
 
 
 def buffer_worker(device_id: str):
-    """缓流器工作线程：为指定摄像头缓冲源流，从RTSP读取帧放入缓流器队列"""
-    logger.info(f"💾 缓流器线程启动 [设备: {device_id}]")
+    """读取器工作线程：从RTSP读取帧，直接放入队列"""
+    logger.info(f"📹 读取器线程启动 [设备: {device_id}]")
     
     if not task_config or not hasattr(task_config, 'device_streams'):
-        logger.error(f"任务配置未加载，设备 {device_id} 缓流器退出")
+        logger.error(f"任务配置未加载，设备 {device_id} 读取器退出")
         return
     
     device_stream_info = task_config.device_streams.get(device_id)
     if not device_stream_info:
-        logger.error(f"设备 {device_id} 流信息不存在，缓流器退出")
+        logger.error(f"设备 {device_id} 流信息不存在，读取器退出")
         return
     
     rtsp_url = device_stream_info.get('rtsp_url')
     device_name = device_stream_info.get('device_name', device_id)
     
     if not rtsp_url:
-        logger.error(f"设备 {device_id} 输入流地址不存在，缓流器退出")
+        logger.error(f"设备 {device_id} 输入流地址不存在，读取器退出")
         return
     
     # 初始化帧计数
@@ -347,10 +436,6 @@ def buffer_worker(device_id: str):
     cap = None
     retry_count = 0
     max_retries = 5
-    
-    # 流畅度优化：基于时间戳的帧率控制（使用更精确的时间）
-    frame_interval = 1.0 / SOURCE_FPS
-    last_frame_time = time.perf_counter()  # 使用更高精度的时间
     
     while not stop_event.is_set():
         try:
@@ -447,46 +532,20 @@ def buffer_worker(device_id: str):
             
             # 更新帧计数
             frame_counts[device_id] += 1
-            frame_count = frame_counts[device_id]
             
-            # 立即缩放到目标分辨率
-            original_height, original_width = frame.shape[:2]
-            if (original_width, original_height) != TARGET_RESOLUTION:
-                frame = cv2.resize(frame, TARGET_RESOLUTION, interpolation=cv2.INTER_LINEAR)
-            
-            # 优化：将帧放入原始帧队列（不复制，直接使用）
-            # 只在队列满时丢弃最旧的帧
+            # 直接将帧放入队列，不做任何处理
             try:
-                raw_frame_queues[device_id].put_nowait({
-                    'frame': frame,  # 不复制，减少开销
-                    'frame_number': frame_count,
-                    'timestamp': time.time(),
-                    'device_id': device_id
-                })
+                frame_queues[device_id].put_nowait(frame)
             except queue.Full:
-                # 队列满时，丢弃最旧的帧（保持队列大小）
+                # 队列满时，丢弃最旧的帧
                 try:
-                    raw_frame_queues[device_id].get_nowait()
-                    raw_frame_queues[device_id].put_nowait({
-                        'frame': frame,
-                        'frame_number': frame_count,
-                        'timestamp': time.time(),
-                        'device_id': device_id
-                    })
+                    frame_queues[device_id].get_nowait()
+                    frame_queues[device_id].put_nowait(frame)
                 except queue.Empty:
                     pass
             
-            # 流畅度优化：基于时间戳的帧率控制（使用更精确的时间）
-            current_time = time.perf_counter()
-            elapsed = current_time - last_frame_time
-            if elapsed < frame_interval:
-                sleep_time = frame_interval - elapsed
-                if sleep_time > 0.001:  # 只sleep超过1ms的情况
-                    time.sleep(sleep_time)
-            last_frame_time = time.perf_counter()
-            
         except Exception as e:
-            logger.error(f"❌ 设备 {device_id} 缓流器异常: {str(e)}", exc_info=True)
+            logger.error(f"❌ 设备 {device_id} 读取器异常: {str(e)}", exc_info=True)
             time.sleep(2)
     
     # 清理资源
@@ -497,159 +556,77 @@ def buffer_worker(device_id: str):
             pass
         device_caps.pop(device_id, None)
     
-    # 清理队列（如果还有未处理的帧）
-    if device_id in raw_frame_queues:
+    # 清理队列
+    if device_id in frame_queues:
         try:
             while True:
-                raw_frame_queues[device_id].get_nowait()
-        except queue.Empty:
-            pass
-    if device_id in processed_frame_queues:
-        try:
-            while True:
-                processed_frame_queues[device_id].get_nowait()
+                frame_queues[device_id].get_nowait()
         except queue.Empty:
             pass
     
-    logger.info(f"💾 设备 {device_id} 缓流器线程停止")
-
-
-def extractor_worker():
-    """抽帧器工作线程：从原始帧队列获取帧，抽帧后放入已处理帧队列"""
-    logger.info("📹 抽帧器线程启动（多摄像头并行）")
-    
-    while not stop_event.is_set():
-        try:
-            has_work = False
-            # 遍历所有设备的原始帧队列
-            for device_id, raw_queue in raw_frame_queues.items():
-                try:
-                    # 使用阻塞获取，超时0.1秒，减少轮询开销
-                    frame_data = raw_queue.get(timeout=0.1)
-                    frame = frame_data['frame']
-                    frame_number = frame_data['frame_number']
-                    timestamp = frame_data['timestamp']
-                    device_id_from_data = frame_data.get('device_id', device_id)
-                    
-                    has_work = True
-                    
-                    # 抽帧：根据抽帧间隔决定是否处理
-                    if frame_number % EXTRACT_INTERVAL == 0:
-                        # 需要推送的帧，放入已处理帧队列
-                        try:
-                            processed_frame_queues[device_id].put_nowait({
-                                'frame': frame,  # 不复制，直接使用
-                                'frame_number': frame_number,
-                                'timestamp': timestamp,
-                                'device_id': device_id_from_data
-                            })
-                            if frame_number % (EXTRACT_INTERVAL * 10) == 0:
-                                logger.debug(f"✅ 抽帧器 [{device_id_from_data}]: 帧号 {frame_number} 已处理")
-                        except queue.Full:
-                            # 已处理队列满时，丢弃最旧的帧
-                            try:
-                                processed_frame_queues[device_id].get_nowait()
-                                processed_frame_queues[device_id].put_nowait({
-                                    'frame': frame,
-                                    'frame_number': frame_number,
-                                    'timestamp': timestamp,
-                                    'device_id': device_id_from_data
-                                })
-                            except queue.Empty:
-                                pass
-                    # 不需要推送的帧直接丢弃（不放入已处理队列）
-                    
-                except queue.Empty:
-                    continue
-                except Exception as e:
-                    logger.error(f"❌ 设备 {device_id} 抽帧器异常: {str(e)}", exc_info=True)
-            
-            # 如果本轮没有工作，短暂休眠
-            if not has_work:
-                time.sleep(0.01)  # 10ms
-            
-        except Exception as e:
-            logger.error(f"❌ 抽帧器异常: {str(e)}", exc_info=True)
-            time.sleep(0.1)
-    
-    logger.info("📹 抽帧器线程停止")
+    logger.info(f"📹 设备 {device_id} 读取器线程停止")
 
 
 def pusher_worker():
-    """推流器工作线程：从已处理帧队列获取帧，推送到各自的RTMP"""
+    """推流器工作线程：从队列获取帧，直接推送到RTMP"""
     logger.info("📺 推流器线程启动（多摄像头并行）")
     
     # 为每个设备初始化推送进程
     device_pusher_processes = {}  # {device_id: subprocess.Popen}
-    # 为每个设备记录最后推送时间，用于帧率控制
-    device_last_push_time = {}  # {device_id: float}
-    
-    # 计算每帧的时间间隔（基于实际推流帧率）
-    push_frame_interval = 1.0 / TARGET_FPS if TARGET_FPS > 0 else 0.1
-    # 队列积压阈值：如果队列中积压超过1秒的帧，丢弃旧帧保持实时性
-    # 这样可以避免画面延迟过大，同时保持流畅
-    max_queue_seconds = 1.0
-    max_queue_frames = max(2, int(TARGET_FPS * max_queue_seconds))  # 至少保留2帧
+    # 跟踪每个设备使用的编码器（用于自动回退）
+    device_codec_fallback = {}  # {device_id: bool} True表示已回退到软件编码
     
     while not stop_event.is_set():
         try:
             has_work = False
-            # 遍历所有设备的已处理帧队列
-            for device_id, processed_queue in processed_frame_queues.items():
+            # 遍历所有设备的帧队列
+            for device_id, frame_queue in frame_queues.items():
                 try:
-                    # 检查队列积压情况，如果积压太多，丢弃旧帧保持实时性
-                    queue_size = processed_queue.qsize()
-                    if queue_size > max_queue_frames:
-                        # 队列积压过多，丢弃旧帧，只保留最新的几帧
-                        # 这样可以避免画面延迟过大，同时保持流畅播放
-                        dropped_count = 0
-                        target_size = max(1, max_queue_frames // 2)  # 保留一半，至少1帧
-                        while processed_queue.qsize() > target_size:
-                            try:
-                                processed_queue.get_nowait()
-                                dropped_count += 1
-                            except queue.Empty:
-                                break
-                        if dropped_count > 0:
-                            logger.debug(f"设备 {device_id} 队列积压，已丢弃 {dropped_count} 帧旧帧以保持实时性 (队列大小: {queue_size} -> {processed_queue.qsize()})")
-                    
-                    # 使用非阻塞获取，避免一次性处理太多帧
-                    try:
-                        frame_data = processed_queue.get_nowait()
-                    except queue.Empty:
-                        continue
-                    frame = frame_data['frame']
-                    frame_number = frame_data['frame_number']
-                    device_id_from_data = frame_data.get('device_id', device_id)
-                    
+                    # 使用非阻塞获取
+                    frame = frame_queue.get_nowait()
                     has_work = True
                     
                     # 获取设备流信息
-                    device_stream_info = task_config.device_streams.get(device_id_from_data) if task_config else None
+                    device_stream_info = task_config.device_streams.get(device_id) if task_config else None
                     if not device_stream_info:
                         continue
                     
                     rtmp_url = device_stream_info.get('rtmp_url')
-                    device_name = device_stream_info.get('device_name', device_id_from_data)
+                    device_name = device_stream_info.get('device_name', device_id)
                     
                     if not rtmp_url:
                         continue
                     
                     # 获取或创建推送进程
-                    pusher_process = device_pusher_processes.get(device_id_from_data)
+                    pusher_process = device_pusher_processes.get(device_id)
                     
                     # 如果进程不存在或已退出，启动新进程
                     if pusher_process is None or pusher_process.poll() is not None:
                         if pusher_process and pusher_process.poll() is not None:
                             # 获取错误信息
                             stderr_lines = []
-                            if device_id_from_data in device_pusher_stderr_buffers:
-                                with device_pusher_stderr_locks.get(device_id_from_data, threading.Lock()):
-                                    stderr_lines = device_pusher_stderr_buffers[device_id_from_data].copy()
-                                    device_pusher_stderr_buffers[device_id_from_data].clear()
+                            if device_id in device_pusher_stderr_buffers:
+                                with device_pusher_stderr_locks.get(device_id, threading.Lock()):
+                                    stderr_lines = device_pusher_stderr_buffers[device_id].copy()
+                                    device_pusher_stderr_buffers[device_id].clear()
                             
                             exit_code = pusher_process.returncode
-                            logger.warning(f"⚠️  设备 {device_id_from_data} 推送进程异常退出 (退出码: {exit_code})")
+                            
+                            # 检查是否是硬件编码错误，如果是则回退到软件编码
+                            is_hw_error = False
+                            if stderr_lines:
+                                for line in stderr_lines:
+                                    line_lower = line.lower()
+                                    if 'h264_nvenc' in line_lower and any(keyword in line_lower for keyword in ['error', 'failed', 'cannot', 'unable', 'invalid']):
+                                        is_hw_error = True
+                                        break
+                            
+                            if is_hw_error and not device_codec_fallback.get(device_id, False):
+                                # 硬件编码失败，回退到软件编码
+                                logger.warning(f"⚠️  设备 {device_id} 硬件编码失败，自动回退到软件编码")
+                                device_codec_fallback[device_id] = True
+                            
+                            logger.warning(f"⚠️  设备 {device_id} 推送进程异常退出 (退出码: {exit_code})")
                             
                             # 提取关键错误信息
                             if stderr_lines:
@@ -676,50 +653,93 @@ def pusher_worker():
                         
                         # 检查RTMP服务器连接
                         if not check_rtmp_server_connection(rtmp_url):
-                            logger.warning(f"⚠️  设备 {device_id_from_data} RTMP服务器不可用: {rtmp_url}")
+                            logger.warning(f"⚠️  设备 {device_id} RTMP服务器不可用: {rtmp_url}")
                             time.sleep(2)
                             continue
                         
-                        # 构建FFmpeg命令（优化低延迟参数，使用实际推流帧率）
-                        height, width = TARGET_HEIGHT, TARGET_WIDTH
+                        # 获取帧的实际尺寸（让FFmpeg处理resize）
+                        frame_height, frame_width = frame.shape[:2]
+                        
+                        # 决定使用哪个编码器（如果硬件编码失败过，使用软件编码）
+                        use_hardware = (_hwaccel_codec == 'h264_nvenc' and 
+                                       not device_codec_fallback.get(device_id, False))
+                        
+                        # 如果使用硬件编码，确保分辨率对齐到16的倍数
+                        if use_hardware:
+                            aligned_width, aligned_height = align_resolution(TARGET_WIDTH, TARGET_HEIGHT, 16)
+                            if aligned_width != TARGET_WIDTH or aligned_height != TARGET_HEIGHT:
+                                logger.debug(f"设备 {device_id} 分辨率对齐: {TARGET_WIDTH}x{TARGET_HEIGHT} -> {aligned_width}x{aligned_height}")
+                            target_w, target_h = aligned_width, aligned_height
+                        else:
+                            target_w, target_h = TARGET_WIDTH, TARGET_HEIGHT
+                        
+                        # 构建FFmpeg命令（简化，让FFmpeg处理resize和编码）
                         ffmpeg_cmd = [
                             "ffmpeg",
                             "-y",
-                            "-fflags", "nobuffer",
-                            "-flags", "low_delay",  # 低延迟标志
+                            "-fflags", "nobuffer+flush_packets+genpts",
+                            "-flags", "low_delay",
                             "-f", "rawvideo",
                             "-vcodec", "rawvideo",
-                            "-pix_fmt", "bgr24",
-                            "-s", f"{width}x{height}",
-                            "-r", str(TARGET_FPS),  # 使用实际推流帧率，而不是源流帧率
+                            "-pix_fmt", "rgb24",  # 使用RGB格式输入，确保颜色正确
+                            "-s", f"{frame_width}x{frame_height}",  # 使用实际帧尺寸
+                            "-r", str(SOURCE_FPS),  # 使用源流帧率
                             "-i", "-",
-                            "-c:v", "libx264",
-                            "-b:v", FFMPEG_VIDEO_BITRATE,
-                            "-pix_fmt", "yuv420p",
-                            "-preset", FFMPEG_PRESET,
-                            "-tune", "zerolatency",  # 零延迟调优
-                            "-g", str(FFMPEG_GOP_SIZE),
-                            "-keyint_min", str(TARGET_FPS),  # 使用实际推流帧率
-                            "-sc_threshold", "0",  # 禁用场景切换检测，降低延迟
-                            "-f", "flv",
+                            "-vf", f"scale={target_w}:{target_h}:flags=fast_bilinear",  # 让FFmpeg处理resize，自动转换颜色空间
                         ]
                         
-                        # 如果配置了线程数限制，添加线程参数
-                        if FFMPEG_THREADS is not None and str(FFMPEG_THREADS).strip():
-                            try:
-                                threads_value = int(FFMPEG_THREADS)
-                                if threads_value > 0:
-                                    ffmpeg_cmd.extend(["-threads", str(threads_value)])
-                            except (ValueError, TypeError):
-                                pass
+                        # 根据硬件加速配置选择编码器
+                        if use_hardware:
+                            # 使用硬件编码 h264_nvenc
+                            ffmpeg_cmd.extend([
+                                "-c:v", "h264_nvenc",
+                                "-b:v", FFMPEG_VIDEO_BITRATE,
+                                "-preset", "p3",  # p3是低延迟预设
+                                "-tune", "ll",  # 低延迟调优
+                                "-gpu", "0",  # 使用GPU 0
+                                "-rc", "vbr",  # 可变比特率
+                                "-profile:v", "baseline",
+                                "-level", "4.0",
+                                "-g", str(FFMPEG_GOP_SIZE),
+                                "-bf", "0",  # 无B帧
+                                "-pix_fmt", "yuv420p",  # 输出像素格式
+                                "-colorspace", "bt709",  # 使用BT.709颜色空间
+                                "-color_primaries", "bt709",  # BT.709原色
+                                "-color_trc", "bt709",  # BT.709传输特性
+                            ])
+                        else:
+                            # 使用软件编码 libx264
+                            ffmpeg_cmd.extend([
+                                "-c:v", "libx264",
+                                "-b:v", FFMPEG_VIDEO_BITRATE,
+                                "-preset", FFMPEG_PRESET,
+                                "-tune", "zerolatency",
+                                "-profile:v", "baseline",
+                                "-g", str(FFMPEG_GOP_SIZE),
+                                "-bf", "0",
+                                "-pix_fmt", "yuv420p",  # 输出像素格式
+                                "-colorspace", "bt709",  # 使用BT.709颜色空间
+                                "-color_primaries", "bt709",  # BT.709原色
+                                "-color_trc", "bt709",  # BT.709传输特性
+                            ])
+                            if FFMPEG_THREADS is not None and str(FFMPEG_THREADS).strip():
+                                try:
+                                    threads_value = int(FFMPEG_THREADS)
+                                    if threads_value > 0:
+                                        ffmpeg_cmd.extend(["-threads", str(threads_value)])
+                                except (ValueError, TypeError):
+                                    pass
                         
-                        # 添加输出地址
-                        ffmpeg_cmd.append(rtmp_url)
+                        ffmpeg_cmd.extend([
+                            "-f", "flv",
+                            "-flvflags", "no_duration_filesize",
+                            rtmp_url
+                        ])
                         
                         # 初始化stderr缓冲区
-                        if device_id_from_data not in device_pusher_stderr_buffers:
-                            device_pusher_stderr_buffers[device_id_from_data] = []
-                            device_pusher_stderr_locks[device_id_from_data] = threading.Lock()
+                        if device_id not in device_pusher_stderr_buffers:
+                            device_pusher_stderr_buffers[device_id] = []
+                            device_pusher_stderr_locks[device_id] = threading.Lock()
                         
                         try:
                             pusher_process = subprocess.Popen(
@@ -732,15 +752,15 @@ def pusher_worker():
                             )
                             
                             # 启动stderr读取线程
-                            stderr_buffer = device_pusher_stderr_buffers[device_id_from_data]
-                            stderr_lock = device_pusher_stderr_locks[device_id_from_data]
+                            stderr_buffer = device_pusher_stderr_buffers[device_id]
+                            stderr_lock = device_pusher_stderr_locks[device_id]
                             stderr_thread = threading.Thread(
                                 target=read_ffmpeg_stderr,
-                                args=(device_id_from_data, pusher_process.stderr, stderr_buffer, stderr_lock),
+                                args=(device_id, pusher_process.stderr, stderr_buffer, stderr_lock),
                                 daemon=True
                             )
                             stderr_thread.start()
-                            device_pusher_stderr_threads[device_id_from_data] = stderr_thread
+                            device_pusher_stderr_threads[device_id] = stderr_thread
                             
                             # 等待一小段时间，检查进程是否立即退出
                             time.sleep(0.5)
@@ -749,86 +769,97 @@ def pusher_worker():
                                 # 获取错误信息
                                 time.sleep(0.3)
                                 error_lines = []
-                                with device_pusher_stderr_locks[device_id_from_data]:
-                                    error_lines = device_pusher_stderr_buffers[device_id_from_data].copy()
-                                    device_pusher_stderr_buffers[device_id_from_data].clear()
+                                with device_pusher_stderr_locks[device_id]:
+                                    error_lines = device_pusher_stderr_buffers[device_id].copy()
+                                    device_pusher_stderr_buffers[device_id].clear()
                                 
                                 exit_code = pusher_process.returncode
-                                logger.error(f"❌ 设备 {device_id_from_data} 推送进程启动失败 (退出码: {exit_code})")
                                 
+                                # 检查是否是硬件编码错误，如果是则回退到软件编码
+                                is_hw_error = False
                                 if error_lines:
-                                    key_errors = []
                                     for line in error_lines:
                                         line_lower = line.lower()
-                                        if any(skip in line_lower for skip in ['version', 'copyright', 'built with', 'configuration:', 'libav']):
-                                            continue
-                                        if any(keyword in line_lower for keyword in ['error', 'failed', 'cannot', 'unable', 'invalid', 'connection refused', 'connection reset', 'timeout']):
-                                            key_errors.append(line)
+                                        if 'h264_nvenc' in line_lower and any(keyword in line_lower for keyword in ['error', 'failed', 'cannot', 'unable', 'invalid']):
+                                            is_hw_error = True
+                                            break
+                                
+                                if is_hw_error and use_hardware and not device_codec_fallback.get(device_id, False):
+                                    # 硬件编码失败，回退到软件编码
+                                    logger.warning(f"⚠️  设备 {device_id} 硬件编码失败，自动回退到软件编码")
+                                    device_codec_fallback[device_id] = True
+                                    # 清理失败的进程
+                                    pusher_process = None
+                                    # 继续循环，下次会使用软件编码重试
+                                    continue
+                                else:
+                                    logger.error(f"❌ 设备 {device_id} 推送进程启动失败 (退出码: {exit_code})")
                                     
-                                    if key_errors:
-                                        logger.error(f"   关键错误: {key_errors[-5:]}")
+                                    if error_lines:
+                                        key_errors = []
+                                        for line in error_lines:
+                                            line_lower = line.lower()
+                                            if any(skip in line_lower for skip in ['version', 'copyright', 'built with', 'configuration:', 'libav']):
+                                                continue
+                                            if any(keyword in line_lower for keyword in ['error', 'failed', 'cannot', 'unable', 'invalid', 'connection refused', 'connection reset', 'timeout']):
+                                                key_errors.append(line)
+                                        
+                                        if key_errors:
+                                            logger.error(f"   关键错误: {key_errors[-5:]}")
                                 
                                 pusher_process = None
                                 time.sleep(2)
                                 continue
                             
-                            device_pusher_processes[device_id_from_data] = pusher_process
-                            device_pushers[device_id_from_data] = pusher_process
-                            logger.info(f"✅ 设备 {device_id_from_data} 推送进程已启动 (PID: {pusher_process.pid})")
+                            device_pusher_processes[device_id] = pusher_process
+                            device_pushers[device_id] = pusher_process
+                            actual_codec = 'libx264' if device_codec_fallback.get(device_id, False) else _hwaccel_codec
+                            codec_info = f"硬件编码 ({actual_codec})" if actual_codec == 'h264_nvenc' else f"软件编码 ({actual_codec})"
+                            logger.info(f"✅ 设备 {device_id} 推送进程已启动 (PID: {pusher_process.pid})")
                             logger.info(f"   📺 推流地址: {rtmp_url}")
-                            logger.info(f"   📐 推流参数: {TARGET_WIDTH}x{TARGET_HEIGHT} @ {TARGET_FPS} fps")
+                            logger.info(f"   📐 推流参数: {target_w}x{target_h} @ {SOURCE_FPS} fps")
+                            logger.info(f"   🎬 编码器: {codec_info}, 比特率: {FFMPEG_VIDEO_BITRATE}")
                             
                         except Exception as e:
-                            logger.error(f"❌ 设备 {device_id_from_data} 启动推送进程失败: {str(e)}", exc_info=True)
+                            logger.error(f"❌ 设备 {device_id} 启动推送进程失败: {str(e)}", exc_info=True)
                             pusher_process = None
                             time.sleep(2)
                             continue
                     
-                    # 推送到RTMP流（添加基于时间戳的帧率控制，使画面更自然）
+                    # 推送帧，将BGR转换为RGB以确保颜色正确
                     if pusher_process and pusher_process.poll() is None:
                         try:
-                            # 基于时间戳的帧率控制，确保推送速度自然
-                            current_time = time.perf_counter()
-                            last_push_time = device_last_push_time.get(device_id_from_data, 0)
-                            
-                            # 计算距离上次推送的时间
-                            elapsed = current_time - last_push_time
-                            
-                            # 如果距离上次推送时间太短，等待以保持自然帧率
-                            # 这样可以避免一股脑推送所有积压的帧
-                            if elapsed < push_frame_interval:
-                                sleep_time = push_frame_interval - elapsed
-                                if sleep_time > 0.001:  # 只sleep超过1ms的情况
-                                    time.sleep(sleep_time)
-                                    # 重新获取当前时间
-                                    current_time = time.perf_counter()
-                            
-                            # 推送帧
-                            pusher_process.stdin.write(frame.tobytes())
+                            # OpenCV读取的是BGR格式，转换为RGB格式
+                            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                            pusher_process.stdin.write(rgb_frame.tobytes())
                             pusher_process.stdin.flush()
-                            
-                            # 更新最后推送时间
-                            device_last_push_time[device_id_from_data] = current_time
-                            
-                            # 每次只处理一帧，然后继续循环，避免一次性推送太多
-                            # 这样即使队列中有积压，也会按自然速度推送
-                            
                         except (BrokenPipeError, OSError, IOError) as e:
-                            # 管道错误，进程可能已退出
-                            logger.error(f"❌ 设备 {device_id_from_data} 推送帧失败: {str(e)}")
-                            # 检查进程是否真的退出了
+                            logger.error(f"❌ 设备 {device_id} 推送帧失败: {str(e)}")
                             if pusher_process.poll() is not None:
-                                # 获取错误信息
                                 stderr_lines = []
-                                if device_id_from_data in device_pusher_stderr_buffers:
-                                    with device_pusher_stderr_locks.get(device_id_from_data, threading.Lock()):
-                                        stderr_lines = device_pusher_stderr_buffers[device_id_from_data].copy()
-                                        device_pusher_stderr_buffers[device_id_from_data].clear()
+                                if device_id in device_pusher_stderr_buffers:
+                                    with device_pusher_stderr_locks.get(device_id, threading.Lock()):
+                                        stderr_lines = device_pusher_stderr_buffers[device_id].copy()
+                                        device_pusher_stderr_buffers[device_id].clear()
                                 
                                 exit_code = pusher_process.returncode
-                                logger.warning(f"⚠️  设备 {device_id_from_data} 推送进程异常退出 (退出码: {exit_code})")
                                 
-                                # 提取关键错误信息
+                                # 检查是否是硬件编码错误，如果是则回退到软件编码
+                                is_hw_error = False
+                                if stderr_lines:
+                                    for line in stderr_lines:
+                                        line_lower = line.lower()
+                                        if 'h264_nvenc' in line_lower and any(keyword in line_lower for keyword in ['error', 'failed', 'cannot', 'unable', 'invalid']):
+                                            is_hw_error = True
+                                            break
+                                
+                                if is_hw_error and not device_codec_fallback.get(device_id, False):
+                                    # 硬件编码失败，回退到软件编码
+                                    logger.warning(f"⚠️  设备 {device_id} 硬件编码失败，自动回退到软件编码")
+                                    device_codec_fallback[device_id] = True
+                                
+                                logger.warning(f"⚠️  设备 {device_id} 推送进程异常退出 (退出码: {exit_code})")
+                                
                                 if stderr_lines:
                                     key_errors = []
                                     for line in stderr_lines:
@@ -842,29 +873,23 @@ def pusher_worker():
                                         logger.warning(f"   关键错误: {key_errors[-5:]}")
                                 
                                 pusher_process = None
-                                device_pusher_processes.pop(device_id_from_data, None)
-                                device_pushers.pop(device_id_from_data, None)
+                                device_pusher_processes.pop(device_id, None)
+                                device_pushers.pop(device_id, None)
                         except Exception as e:
-                            logger.error(f"❌ 设备 {device_id_from_data} 推送帧失败: {str(e)}")
-                            # 检查进程状态
+                            logger.error(f"❌ 设备 {device_id} 推送帧失败: {str(e)}")
                             if pusher_process and pusher_process.poll() is not None:
                                 pusher_process = None
-                                device_pusher_processes.pop(device_id_from_data, None)
-                                device_pushers.pop(device_id_from_data, None)
+                                device_pusher_processes.pop(device_id, None)
+                                device_pushers.pop(device_id, None)
                 
                 except queue.Empty:
                     continue
                 except Exception as e:
                     logger.error(f"❌ 设备 {device_id} 推流器异常: {str(e)}", exc_info=True)
             
-            # 如果本轮没有工作，短暂休眠
-            # 注意：即使有工作，我们也只处理一帧就继续循环，确保推送速度自然
+            # 如果没有工作，短暂休眠
             if not has_work:
-                time.sleep(0.01)  # 10ms
-            else:
-                # 即使有工作，也稍微休眠一下，避免CPU占用过高
-                # 这样可以给其他设备处理的机会，同时保持推送速度自然
-                time.sleep(0.001)  # 1ms
+                time.sleep(0.001)
             
         except Exception as e:
             logger.error(f"❌ 推流器异常: {str(e)}", exc_info=True)
@@ -919,7 +944,7 @@ def update_task_status(status: str = None, exception_reason: str = None):
     """
     try:
         with get_flask_app().app_context():
-            task = StreamForwardTask.query.get(TASK_ID)
+            task = db.session.get(StreamForwardTask, TASK_ID)
             if task:
                 if status is not None:
                     task.status = status
@@ -1011,9 +1036,8 @@ def main():
     logger.info(f"VIDEO服务端口: {VIDEO_SERVICE_PORT}")
     logger.info(f"心跳上报URL: http://localhost:{VIDEO_SERVICE_PORT}/video/stream-forward/heartbeat")
     logger.info(f"源流帧率: {SOURCE_FPS} fps")
-    logger.info(f"抽帧间隔: 每 {EXTRACT_INTERVAL} 帧抽1帧")
-    logger.info(f"实际推流帧率: {TARGET_FPS} fps (源流 {SOURCE_FPS} fps ÷ 抽帧间隔 {EXTRACT_INTERVAL})")
     logger.info(f"目标分辨率: {TARGET_WIDTH}x{TARGET_HEIGHT}")
+    logger.info(f"GOP大小: {FFMPEG_GOP_SIZE}")
     logger.info("=" * 60)
     
     # 注册信号处理
@@ -1031,19 +1055,14 @@ def main():
     
     device_streams = task_config.device_streams
     
-    # 为每个设备创建队列和锁（优化后的双队列架构）
-    # 已处理帧队列大小：根据实际推流帧率动态设置，缓冲约2-3秒的帧
-    # 这样可以避免队列过大导致积压，同时保持一定的缓冲
-    processed_queue_size = max(5, min(BUFFER_QUEUE_SIZE, int(TARGET_FPS * 3)))  # 最多3秒的缓冲
-    
+    # 为每个设备创建队列和锁（简化单队列架构）
     for device_id in device_streams.keys():
-        raw_frame_queues[device_id] = queue.Queue(maxsize=BUFFER_QUEUE_SIZE)
-        processed_frame_queues[device_id] = queue.Queue(maxsize=processed_queue_size)
+        frame_queues[device_id] = queue.Queue(maxsize=BUFFER_QUEUE_SIZE)
         device_locks[device_id] = threading.Lock()
         frame_counts[device_id] = 0
-        logger.info(f"✅ 初始化设备 {device_id} 的队列和锁（双队列架构，已处理队列大小: {processed_queue_size}）")
+        logger.info(f"✅ 初始化设备 {device_id} 的队列和锁")
     
-    # 为每个摄像头启动独立的缓流器线程
+    # 为每个摄像头启动独立的读取器线程
     buffer_threads = []
     for device_id in device_streams.keys():
         thread = threading.Thread(
@@ -1053,12 +1072,7 @@ def main():
         )
         thread.start()
         buffer_threads.append(thread)
-        logger.info(f"✅ 启动设备 {device_id} 的缓流器线程")
-    
-    # 启动共享的抽帧器线程（处理所有摄像头）
-    extractor_thread = threading.Thread(target=extractor_worker, daemon=True)
-    extractor_thread.start()
-    logger.info("✅ 启动抽帧器线程（多摄像头并行）")
+        logger.info(f"✅ 启动设备 {device_id} 的读取器线程")
     
     # 启动共享的推流器线程（处理所有摄像头）
     pusher_thread = threading.Thread(target=pusher_worker, daemon=True)
@@ -1087,11 +1101,6 @@ def main():
                 update_task_status(status=1, exception_reason="所有缓流器线程已退出")
                 break
             
-            if not extractor_thread.is_alive():
-                logger.error("❌ 抽帧器线程已退出，服务异常")
-                update_task_status(status=1, exception_reason="抽帧器线程已退出")
-                break
-            
             if not pusher_thread.is_alive():
                 logger.error("❌ 推流器线程已退出，服务异常")
                 update_task_status(status=1, exception_reason="推流器线程已退出")
@@ -1117,7 +1126,6 @@ def main():
         for thread in buffer_threads:
             thread.join(timeout=10)
         
-        extractor_thread.join(timeout=10)
         pusher_thread.join(timeout=10)
         
         # 停止所有FFmpeg进程
@@ -1166,23 +1174,14 @@ def main():
             device_caps.pop(device_id, None)
         
         # 清理所有队列
-        for device_id in list(raw_frame_queues.keys()):
+        for device_id in list(frame_queues.keys()):
             try:
-                queue_obj = raw_frame_queues[device_id]
+                queue_obj = frame_queues[device_id]
                 while True:
                     queue_obj.get_nowait()
             except queue.Empty:
                 pass
-            raw_frame_queues.pop(device_id, None)
-        
-        for device_id in list(processed_frame_queues.keys()):
-            try:
-                queue_obj = processed_frame_queues[device_id]
-                while True:
-                    queue_obj.get_nowait()
-            except queue.Empty:
-                pass
-            processed_frame_queues.pop(device_id, None)
+            frame_queues.pop(device_id, None)
         
         # 更新任务状态为已停止
         try:
