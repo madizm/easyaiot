@@ -112,7 +112,9 @@ public class UserApiKeyController {
     @Parameter(name = "page", description = "当前页", required = true)
     @Parameter(name = "count", description = "每页查询数量", required = true)
     @Transactional
-    public PageInfo<UserApiKey> userApiKeys(@RequestParam(required = true) int page, @RequestParam(required = true) int count) {
+    public PageInfo<UserApiKey> userApiKeys(@RequestParam(required = false) Integer page, @RequestParam(required = false) Integer count) {
+        if (page == null || page < 1) page = 1;
+        if (count == null || count < 1) count = 20;
         return userApiKeyService.getUserApiKeys(page, count);
     }
 

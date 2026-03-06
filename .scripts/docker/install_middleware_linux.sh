@@ -2149,7 +2149,7 @@ prepare_zlmediakit_config() {
 apiDebug=1
 defaultSnap=./www/logo.png
 downloadRoot=./www;
-secret=su6TiedN2rVAmBbIDX0aa0QTiBJLBdcf
+secret=035c73f7-bb6b-4889-a715-d9eb2d1925cc
 snapRoot=./www/snap/
 
 [cluster]
@@ -2351,16 +2351,33 @@ EOF
     fi
 }
 
+# 从 ZLM 配置文件中读取 api.secret（ZLM HTTP API 必须带 secret，否则报 Required parameter missed: "secret"）
+get_zlm_api_secret() {
+    local conf="$SCRIPT_DIR/../zlmediakit/conf/config.ini"
+    if [ -f "$conf" ]; then
+        awk -F= '/^\[api\]/ { in_api=1; next } /^\[/ { in_api=0 } in_api && $1=="secret" { gsub(/^[ \t]+|[ \t]+$/,"",$2); print $2; exit }' "$conf"
+    fi
+}
+
 # 等待 ZLMediaKit 服务就绪
 wait_for_zlmediakit() {
     local max_attempts=60
     local attempt=0
+    local zlm_secret
+    zlm_secret=$(get_zlm_api_secret)
     
     print_info "等待 ZLMediaKit 服务就绪..."
     while [ $attempt -lt $max_attempts ]; do
-        if curl -s --connect-timeout 2 "http://localhost:6080/index/api/getServerConfig" > /dev/null 2>&1; then
-            print_success "ZLMediaKit 服务已就绪"
-            return 0
+        if [ -n "$zlm_secret" ]; then
+            if curl -s --connect-timeout 2 "http://localhost:6080/index/api/getServerConfig?secret=$zlm_secret" > /dev/null 2>&1; then
+                print_success "ZLMediaKit 服务已就绪"
+                return 0
+            fi
+        else
+            if curl -s --connect-timeout 2 "http://localhost:6080/index/api/getServerConfig" > /dev/null 2>&1; then
+                print_success "ZLMediaKit 服务已就绪"
+                return 0
+            fi
         fi
         attempt=$((attempt + 1))
         sleep 2

@@ -262,9 +262,11 @@ function handleEdit(record) {
   cardListReload();
 }
 
-//播放按钮事件
+//播放按钮事件：设备号优先用路由（当前为某设备下的通道列表）；通道号用 channelId 或 deviceId
 function handlePlay(record) {
-  openPlayerAddModal(true, record)
+  const deviceId = route.params.deviceIdentification ?? record.deviceId
+  const channelId = record.channelId ?? record.deviceId
+  openPlayerAddModal(true, { ...record, deviceId, channelId })
 }
 
 const router = useRouter();

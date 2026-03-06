@@ -76,11 +76,12 @@
                     </span>
                   </div>
                 </div>
-                <section class="full-loading absolute" style="display: none;">
+                <section class="full-loading absolute" :style="{ display: state.playLoading ? 'flex' : 'none' }">
                   <div class="ant-spin ant-spin-lg"><span
                     class="ant-spin-dot ant-spin-dot-spin"><i class="ant-spin-dot-item"></i><i
                     class="ant-spin-dot-item"></i><i class="ant-spin-dot-item"></i><i
                     class="ant-spin-dot-item"></i></span></div>
+                  <div class="jessibuca-loading-text" v-if="state.playLoading">正在请求点播...</div>
                 </section>
               </TabPane>
               <TabPane key="camera" tab="云台控制">
@@ -105,6 +106,7 @@ import Ptz from "@/components/Player/module/ptz.vue";
 import {copyText} from "@/utils/copyTextToClipboard";
 import {useMessage} from "@/hooks/web/useMessage";
 import {controlPTZ} from "@/api/device/camera";
+import {playByDeviceAndChannel} from "@/api/device/gb28181";
 
 const {createMessage} = useMessage()
 
@@ -128,6 +130,7 @@ const state = reactive({
   videoUrlList: [{label: 'flv', value: "1"}],
   deviceId: '',
   activeKey: 'info',
+  playLoading: false,
   playerOptions: {
     aspectRatio: '16:5',
     controls: true,
@@ -137,13 +140,46 @@ const state = reactive({
   },
 })
 
-const [register, {closeModal}] = useModalInner((record) => {
+const [register, {closeModal}] = useModalInner(async (record) => {
+  state.currentUrl = '';
+  state.iframeUrl = '';
+  state.playLoading = false;
+
+  const deviceId = record?.deviceId || record?.deviceIdentification;
+  const channelId = record?.channelId ?? record?.deviceId;
+
+  // 国标通道：无 http_stream 时先请求点播接口获取播放地址
+  if ((deviceId && channelId) && !record?.['http_stream']) {
+    state.playLoading = true;
+    try {
+      const res = await playByDeviceAndChannel(deviceId, channelId);
+      const streamContent = res?.data?.data ?? res?.data;
+      const url = streamContent?.ws_flv || streamContent?.https_flv || streamContent?.rtmp || '';
+      if (url) {
+        state.currentUrl = url;
+        state.iframeUrl = '<iframe src="' + url + '"></iframe>';
+        state.videoUrlList = [{ label: 'flv', value: url }];
+        state.mediaType = url;
+      } else {
+        createMessage.error(streamContent?.msg || res?.data?.msg || '未获取到播放地址');
+      }
+    } catch (e) {
+      console.error('点播请求失败:', e);
+      createMessage.error('点播失败，请检查设备连接');
+    } finally {
+      state.playLoading = false;
+    }
+    state.deviceId = record['id'] ?? '';
+    return;
+  }
+
+  // 已有播放地址（如摄像头等）
   state.deviceId = record['id'];
-  state.currentUrl = record['http_stream'];
-  state.iframeUrl = "<iframe src=\"" + record['http_stream'] + "\"></iframe>"
-  state.videoUrlList = [
-    {label: 'http_stream', value: record['http_stream']}
-  ];
+  state.currentUrl = record['http_stream'] ?? '';
+  state.iframeUrl = record['http_stream'] ? '<iframe src="' + record['http_stream'] + '"></iframe>' : '';
+  state.videoUrlList = record['http_stream']
+    ? [{ label: 'http_stream', value: record['http_stream'] }]
+    : [{ label: 'flv', value: '1' }];
 });
 
 const handleChange = (value: string) => {

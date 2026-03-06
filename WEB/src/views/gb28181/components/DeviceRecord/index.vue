@@ -68,7 +68,9 @@ const dateChange = (e: any) => {
 
 const queryDeviceRecords = () => {
   getDeviceRecordList(route.params.deviceId, route.params.channelId, state.dateValue + " 00:00:00", state.dateValue + " 23:59:59").then((res) => {
-    state.recordList = res['data']['recordList'];
+    // WVP 返回 { code, msg, data: RecordInfo }，RecordInfo 含 recordList
+    const body = res?.data ?? res;
+    state.recordList = body?.data?.recordList ?? body?.recordList ?? [];
   });
 };
 
@@ -77,10 +79,11 @@ function initDeviceRecordList() {
 }
 
 function handleRecordPlay(params) {
-  //deviceId, channelId, startTime, endTime
   playBack(route.params.deviceId, route.params.channelId, params['startTime'], params['endTime']).then((res) => {
-    state.playUrl = res['ws_flv'];
-  })
+    const body = res?.data ?? res;
+    const stream = body?.data ?? body;
+    state.playUrl = stream?.ws_flv || stream?.https_flv || stream?.rtmp || '';
+  });
 }
 
 onMounted(() => {

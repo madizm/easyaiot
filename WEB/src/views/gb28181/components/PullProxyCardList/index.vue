@@ -6,7 +6,7 @@
     <div class="p-2 bg-white">
       <Spin :spinning="state.loading">
         <List
-          :grid="{ gutter: 2, xs: 1, sm: 2, md: 4, lg: 4, xl: 4, xxl: 4 }"
+          :grid="{ gutter: 12, xs: 1, sm: 2, md: 3, lg: 4, xl: 4, xxl: 4 }"
           :data-source="data"
           :pagination="paginationProp"
         >
@@ -14,7 +14,7 @@
             <div
               style="display: flex;align-items: center;justify-content: space-between;flex-direction: row;">
               <span style="padding-left: 7px;font-size: 16px;font-weight: 500;line-height: 24px;">拉流代理列表</span>
-              <div class="space-x-2">
+              <div style="display: flex; gap: 8px;">
                 <slot name="header"></slot>
               </div>
             </div>
@@ -173,8 +173,8 @@ async function fetch(p = {}) {
   const {api, params} = props;
   if (api && isFunction(api)) {
     const res = await api({...params, pageNo: page.value, count: pageSize.value, ...p});
-    data.value = res['data']['list'];
-    total.value = res['data']['total'];
+    data.value = res?.data ?? [];
+    total.value = res?.total ?? 0;
     hideLoading();
   }
 }

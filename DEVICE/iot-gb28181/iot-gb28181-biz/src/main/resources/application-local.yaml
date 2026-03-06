@@ -154,8 +154,13 @@ feign:
 #zlm 默认服务器配置
 media:
   id: zlmediakit-local
-  # [必须修改] zlm服务器的内网IP
-  ip: 127.0.0.1
+  # [必须修改] 这里写宿主机的内网 IP，不要 127.0.0.1
+  ip: 192.168.43.143
+  # 推荐：显示指定 sdp-ip 和 stream-ip，统一用宿主机 IP
+  sdp-ip: 192.168.43.143
+  stream-ip: 192.168.43.143
+  # 可选：如果 ZLM 在容器里、iot-gb28181 在宿主机，hook 用宿主机 IP
+  hook-ip: 192.168.43.143
   # [可选] 有公网IP就配置公网IP, 不可用域名
   # wan_ip: 
   # [必须修改] zlm服务器的http.port (根据 docker-compose.yml，ZLMediaKit 端口映射为 6080:80)
@@ -165,7 +170,7 @@ media:
   # 如果未配置或配置为 127.0.0.1，系统会自动获取宿主机 IP（排除 docker 接口和回环地址）
   # hook-ip: 192.168.43.143  # 已注释，将自动获取宿主机 IP
   # [必选选] zlm服务器的hook.admin_params=secret
-  secret: su6TiedN2rVAmBbIDX0aa0QTiBJLBdcf
+  secret: AdJQu9CMnwZvCc139s8lF0F9dhk6sNXG
   # 启用多端口模式, 多端口模式使用端口区分每路流，兼容性更好。 单端口使用流的ssrc区分， 点播超时建议使用多端口测试
   rtp:
     # [可选] 是否启用多端口模式, 开启后会在portRange范围内选择端口用于媒体流传输

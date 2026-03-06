@@ -36,8 +36,10 @@ public class GlobalResponseBodyHandler implements ResponseBodyAdvice {
     @SuppressWarnings("NullableProblems") // 避免 IDEA 警告
     public Object beforeBodyWrite(Object body, MethodParameter returnType, MediaType selectedContentType, Class selectedConverterType,
                                   ServerHttpRequest request, ServerHttpResponse response) {
-        // 记录 Controller 结果
-        WebFrameworkUtils.setCommonResult(((ServletServerHttpRequest) request).getServletRequest(), (CommonResult<?>) body);
+        // 仅当 body 为 CommonResult 时记录（避免异常处理器返回 WVPResult 等类型时强转 ClassCastException）
+        if (body instanceof CommonResult) {
+            WebFrameworkUtils.setCommonResult(((ServletServerHttpRequest) request).getServletRequest(), (CommonResult<?>) body);
+        }
         return body;
     }
 

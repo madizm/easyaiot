@@ -174,7 +174,9 @@ public class StreamPushServiceImpl implements IStreamPushService {
 
     @Override
     public PageInfo<StreamPush> getPushList(Integer page, Integer count, String query, Boolean pushing, String mediaServerId) {
-        PageHelper.startPage(page, count);
+        int pageNum = (page != null && page > 0) ? page : 1;
+        int pageSize = (count != null && count > 0) ? count : 20;
+        PageHelper.startPage(pageNum, pageSize);
         if (query != null) {
             query = query.replaceAll("/", "//")
                     .replaceAll("%", "/%")

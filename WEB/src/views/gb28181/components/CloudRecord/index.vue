@@ -48,7 +48,7 @@
 import {onMounted, reactive} from 'vue'
 import {Button, DatePicker} from 'ant-design-vue';
 import {useMessage} from "@/hooks/web/useMessage";
-import {cloudplayBack, getCloudRecordList} from "@/api/device/gb28181";
+import {getCloudRecordList, getCloudRecordPlayPath} from "@/api/device/gb28181";
 import {useRoute} from "vue-router";
 import moment from 'moment'
 import {Icon} from "@/components/Icon";
@@ -82,7 +82,7 @@ const queryDeviceRecords = () => {
     page: 1,
     count: 10000,
   }).then((res) => {
-    state.recordList = res['data']['list'];
+    state.recordList = res?.data ?? [];
   });
 };
 
@@ -91,23 +91,26 @@ function initDeviceRecordList() {
 }
 
 function handleRecordPlay(params) {
-  cloudplayBack(params['id']).then((res) => {
-    state.playUrl = res['httpPath'];
-  })
+  getCloudRecordPlayPath(params['id']).then((res) => {
+    const info = res?.data ?? res;
+    state.playUrl = info?.httpPath ?? info?.httpsPath ?? '';
+  });
 }
 
 function handleRecordDownload(params) {
-  cloudplayBack(params['id']).then((res) => {
+  getCloudRecordPlayPath(params['id']).then((res) => {
+    const info = res?.data ?? res;
+    const httpPath = info?.httpPath ?? info?.httpsPath ?? '';
+    if (!httpPath) return;
     const link = document.createElement('a');
     link.target = "_blank";
     link.style.display = 'none';
-    link.href = res['httpPath'] + "&save_name=" + params['fileName'];
+    link.href = httpPath + "&save_name=" + params['fileName'];
 
     document.body.appendChild(link);
     link.click();
-    // 移除元素
     document.body.removeChild(link);
-  })
+  });
 }
 
 onMounted(() => {

@@ -41,6 +41,7 @@ public class ApiController {
         result.put("SIPRealm", sipConfig.getDomain());
         result.put("SIPHost", sipConfig.getShowIp());
         result.put("SIPPort", sipConfig.getPort());
+        result.put("SIPPassword", sipConfig.getPassword());
         result.put("ChannelCount","1000");
         result.put("VersionType","");
         result.put("LogoMiniText","");

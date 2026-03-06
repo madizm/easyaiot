@@ -6,7 +6,7 @@
     <div class="p-2 bg-white">
       <Spin :spinning="state.loading">
         <List
-          :grid="{ gutter: 2, xs: 1, sm: 2, md: 4, lg: 4, xl: 4, xxl: 4 }"
+          :grid="{ gutter: 12, xs: 1, sm: 2, md: 3, lg: 4, xl: 4, xxl: 4 }"
           :data-source="data"
           :pagination="paginationProp"
         >
@@ -14,7 +14,7 @@
             <div
               style="display: flex;align-items: center;justify-content: space-between;flex-direction: row;">
               <span style="padding-left: 7px;font-size: 16px;font-weight: 500;line-height: 24px;">国标设备列表</span>
-              <div class="space-x-2">
+              <div style="display: flex; gap: 8px;">
                 <slot name="header"></slot>
               </div>
             </div>
@@ -78,7 +78,7 @@
               </div>
               <div class="product-img">
                 <img
-                  :src="VIDEO"
+                  :src="getDeviceImage(item)"
                   alt="" class="img" :onclick="handleView.bind(null, item)">
               </div>
             </ListItem>
@@ -95,7 +95,10 @@ import {BasicForm, useForm} from '@/components/Form';
 import {propTypes} from '@/utils/propTypes';
 import {isFunction} from '@/utils/is';
 
-import VIDEO from "@/assets/images/device/video.png";
+import HAIKANG_IMAGE from "@/assets/images/video/haikang.png";
+import DAHUA_IMAGE from "@/assets/images/video/dahua.png";
+import HUAWEI_IMAGE from "@/assets/images/video/huawei.png";
+import OTHER_IMAGE from "@/assets/images/video/other.png";
 import {useMessage} from "@/hooks/web/useMessage";
 import {useRouter} from "vue-router";
 
@@ -154,10 +157,15 @@ onMounted(() => {
 
 async function fetch(p = {}) {
   const {api, params} = props;
-  if (api && isFunction(api)) {
+  if (!api || !isFunction(api)) {
+    hideLoading();
+    return;
+  }
+  try {
     const res = await api({...params, pageNo: page.value, pageSize: pageSize.value, ...p});
-    data.value = res.data;
-    total.value = res.total;
+    data.value = res?.data ?? (Array.isArray(res) ? res : []);
+    total.value = res?.total ?? (Array.isArray(res) ? res.length : 0);
+  } finally {
     hideLoading();
   }
 }
@@ -219,6 +227,16 @@ async function handleRevoke(record: object) {
 async function handleCopy(record: object) {
   await navigator.clipboard.writeText(JSON.stringify(record));
   createMessage.success('复制成功');
+}
+
+// 与直连设备一致的设备图片（按厂商）
+function getDeviceImage(item: any) {
+  const mfr = (item?.manufacturer || item?.manufacture || '').toString().toLowerCase();
+  if (!mfr) return OTHER_IMAGE;
+  if (mfr.includes('海康') || mfr.includes('hikvision') || mfr.includes('hik')) return HAIKANG_IMAGE;
+  if (mfr.includes('大华') || mfr.includes('dahua') || mfr.includes('dh')) return DAHUA_IMAGE;
+  if (mfr.includes('华为') || mfr.includes('huawei')) return HUAWEI_IMAGE;
+  return OTHER_IMAGE;
 }
 
 //刷新通道列表

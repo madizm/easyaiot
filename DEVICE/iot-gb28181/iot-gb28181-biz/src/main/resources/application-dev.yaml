@@ -128,43 +128,50 @@ feign:
 
 #zlm 默认服务器配置
 media:
-  id: zlmediakit-dev
-  # [必须修改] zlm服务器的内网IP
-  ip: 192.168.0.249
+  id: zlmediakit-local
+  # [必须修改] 这里写宿主机的内网 IP，不要 127.0.0.1
+  ip: 192.168.43.143
+  # 推荐：显示指定 sdp-ip 和 stream-ip，统一用宿主机 IP
+  sdp-ip: 192.168.43.143
+  stream-ip: 192.168.43.143
+  # 可选：如果 ZLM 在容器里、iot-gb28181 在宿主机，hook 用宿主机 IP
+  hook-ip: 192.168.43.143
   # [可选] 有公网IP就配置公网IP, 不可用域名
-  # wan_ip: 
-  # [必须修改] zlm服务器的http.port
-  http-port: 8989
+  # wan_ip:
+  # [必须修改] zlm服务器的http.port (根据 docker-compose.yml，ZLMediaKit 端口映射为 6080:80)
+  http-port: 6080
   # [可选] zlm服务器访问WVP所使用的IP, 默认使用127.0.0.1，zlm和wvp没有部署在同一台服务器时必须配置
-  hook-ip: 192.168.0.249
+  # 注意：由于 ZLMediaKit 在容器中运行，而 iot-gb28181 在宿主机运行，需要使用宿主机 IP
+  # 如果未配置或配置为 127.0.0.1，系统会自动获取宿主机 IP（排除 docker 接口和回环地址）
+  # hook-ip: 192.168.43.143  # 已注释，将自动获取宿主机 IP
   # [必选选] zlm服务器的hook.admin_params=secret
-  secret: lkzMxX9eIAOOUnT49wxvbZrGUvXZ5hP9
+  secret: AdJQu9CMnwZvCc139s8lF0F9dhk6sNXG
   # 启用多端口模式, 多端口模式使用端口区分每路流，兼容性更好。 单端口使用流的ssrc区分， 点播超时建议使用多端口测试
   rtp:
     # [可选] 是否启用多端口模式, 开启后会在portRange范围内选择端口用于媒体流传输
     enable: true
     # [可选] 在此范围内选择端口用于媒体流传输, 必须提前在zlm上配置该属性，不然自动配置此属性可能不成功
-    port-range: 50000,50300 # 端口范围
+    port-range: 30000,30500 # 端口范围
     # [可选] 国标级联在此范围内选择端口发送媒体流,
-    send-port-range: 50000,50300 # 端口范围
+    send-port-range: 30000,30500 # 端口范围
 
 --- #################### 国标28181服务器配置（开发环境） ####################
 
 # 作为28181服务器的配置
 sip:
   # [可选] 28181服务监听的端口
-  port: 8116
+  port: 5060
   # 根据国标6.1.2中规定，domain宜采用ID统一编码的前十位编码。国标附录D中定义前8位为中心编码（由省级、市级、区级、基层编号组成，参照GB/T 2260-2007）
   # 后两位为行业编码，定义参照附录D.3
   # 3701020049标识山东济南历下区 信息行业接入
   # [可选]
-  domain: 4101050000
+  domain: 4401020049
   # [可选]
-  id: 41010500002000000001
+  id: 44010200492000000001
   # [可选] 默认设备认证密码，后续扩展使用设备单独密码, 移除密码将不进行校验
-  password: bajiuwulian1006
+  password: admin123
   # 是否存储alarm信息
-  alarm: true
+  alarm: false
 
 --- #################### Minio配置（开发环境） ####################
 

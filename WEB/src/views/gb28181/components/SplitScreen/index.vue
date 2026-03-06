@@ -276,10 +276,14 @@ async function handleSelect(keys: any) {
   }
 
   try {
-    const data = await playByDeviceAndChannel(deviceId, channelId);
-    if (data?.data) {
-      state.playUrls[state.playerIdx] = data.data.ws_flv || data.data.https_flv || data.data.rtmp;
+    const res = await playByDeviceAndChannel(deviceId, channelId);
+    // WVP 返回体为 { code, msg, data: StreamContent }，StreamContent 含 ws_flv / https_flv / rtmp
+    const streamContent = res?.data?.data ?? res?.data;
+    if (streamContent?.ws_flv || streamContent?.https_flv || streamContent?.rtmp) {
+      state.playUrls[state.playerIdx] = streamContent.ws_flv || streamContent.https_flv || streamContent.rtmp;
       createMessage.success('视频加载成功');
+    } else {
+      createMessage.error(streamContent?.msg || res?.data?.msg || '未获取到播放地址');
     }
   } catch (error) {
     console.error('播放失败:', error);

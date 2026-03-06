@@ -156,8 +156,8 @@ public class AlarmController {
     @Parameter(name = "endTime",description = "结束时间")
     @GetMapping("/all")
     public PageInfo<DeviceAlarm> getAll(
-            @RequestParam int page,
-            @RequestParam int count,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer count,
             @RequestParam(required = false) String deviceId,
             @RequestParam(required = false) String channelId,
             @RequestParam(required = false) String alarmPriority,
@@ -166,6 +166,8 @@ public class AlarmController {
             @RequestParam(required = false) String startTime,
             @RequestParam(required = false) String endTime
     ) {
+        if (page == null || page < 1) page = 1;
+        if (count == null || count < 1) count = 20;
         if (ObjectUtils.isEmpty(alarmPriority)) {
             alarmPriority = null;
         }

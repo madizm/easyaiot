@@ -1,22 +1,26 @@
 import {defHttp} from '@/utils/http/axios';
 
-// GB28181 API 前缀
-const GB28181_PREFIX = '/api/device/query';
-const CHANNEL_PREFIX = '/api/common/channel';
-const SERVER_PREFIX = '/api/server';
-const PROXY_PREFIX = '/api/proxy';
-const PLAYBACK_PREFIX = '/api/playback';
-const GB_RECORD_PREFIX = '/api/gb_record';
-const CLOUD_RECORD_PREFIX = '/api/cloud/record';
+// GB28181 通过网关转发到 WVP：Path=/admin-api/gb28181/** -> RewritePath -> /api/${segment}
+// 前端请求路径为 gb28181/xxx（无 /api 前缀），网关会重写为 /api/xxx 转发到 iot-gb28181
+const GB28181_PREFIX = 'gb28181/device/query';
+const CHANNEL_PREFIX = 'gb28181/common/channel';
+const SERVER_PREFIX = 'gb28181/server';
+const PROXY_PREFIX = 'gb28181/proxy';
+const PLAYBACK_PREFIX = 'gb28181/playback';
+const GB_RECORD_PREFIX = 'gb28181/gb_record';
+const CLOUD_RECORD_PREFIX = 'gb28181/cloud/record';
 
 /**
  * 通用请求封装
+ * delete 使用 query 传参以匹配 WVP 的 @RequestParam
  */
 const commonApi = (method: 'get' | 'post' | 'delete' | 'put', url: string, params: any = {}, isTransformResponse = true) => {
+  const isGet = method === 'get';
+  const isDelete = method === 'delete';
   return defHttp[method](
     {
       url,
-      ...(method === 'get' ? { params } : { data: params }),
+      ...(isGet || isDelete ? { params } : { data: params }),
     },
     {
       isTransformResponse,
@@ -24,13 +28,29 @@ const commonApi = (method: 'get' | 'post' | 'delete' | 'put', url: string, param
   );
 };
 
+/** WVP 列表接口返回 PageInfo：{ list, total, pageNum, pageSize, ... }，统一为前端期望的 { data, total } */
+/** 兼容：1) axios 原始 res，body 在 res.data；2) body 为 { code, msg, data: PageInfo } 时取 data.list/data.total */
+const normalizePageResponse = (res: any) => {
+  const body = res?.data ?? res;
+  const page = body?.data ?? body;
+  const list = page?.list ?? (Array.isArray(page) ? page : []);
+  const total = page?.total ?? body?.total ?? res?.total ?? 0;
+  return { data: list, total };
+};
+
+/** 设备列表项：后端字段 deviceId -> 前端使用的 deviceIdentification */
+const normalizeDeviceList = (list: any[]) => (list || []).map((item) => ({
+  ...item,
+  deviceIdentification: item.deviceIdentification ?? item.deviceId,
+}));
+
 // ====================== 设备管理接口 ======================
 
 /**
  * 分页查询国标设备列表
  * @param params 查询参数
  */
-export const queryVideoList = (params: {
+export const queryVideoList = async (params: {
   page?: number;
   pageNum?: number;
   count?: number;
@@ -38,7 +58,6 @@ export const queryVideoList = (params: {
   query?: string;
   status?: boolean;
 }) => {
-  // 兼容pageNum/pageSize和page/count两种参数格式
   const requestParams: any = {};
   if (params.pageNum !== undefined) {
     requestParams.page = params.pageNum;
@@ -56,7 +75,9 @@ export const queryVideoList = (params: {
   if (params.status !== undefined) {
     requestParams.status = params.status;
   }
-  return commonApi('get', `${GB28181_PREFIX}/devices`, requestParams);
+  const res = await commonApi('get', `${GB28181_PREFIX}/devices`, requestParams, false);
+  const { data, total } = normalizePageResponse(res);
+  return { data: normalizeDeviceList(data), total };
 };
 
 /**
@@ -113,7 +134,7 @@ export const getSyncStatus = (deviceId: string) => {
  * 分页查询通道列表
  * @param params 查询参数
  */
-export const queryChannelList = (params: {
+export const queryChannelList = async (params: {
   page?: number;
   pageNo?: number;
   count?: number;
@@ -125,7 +146,6 @@ export const queryChannelList = (params: {
   deviceIdentification?: string;
   sortOrder?: string;
 }) => {
-  // 兼容pageNo/pageSize和page/count两种参数格式
   const requestParams: any = {};
   if (params.pageNo !== undefined) {
     requestParams.page = params.pageNo;
@@ -146,15 +166,12 @@ export const queryChannelList = (params: {
   if (params.channelType !== undefined) {
     requestParams.channelType = params.channelType;
   }
-  
-  if (params.deviceId || params.deviceIdentification) {
-    // 查询指定设备的通道
-    const deviceId = params.deviceId || params.deviceIdentification;
-    return commonApi('get', `${GB28181_PREFIX}/devices/${deviceId}/channels`, requestParams);
-  } else {
-    // 查询全局通道列表
-    return commonApi('get', `${CHANNEL_PREFIX}/list`, requestParams);
-  }
+
+  const url = params.deviceId || params.deviceIdentification
+    ? `${GB28181_PREFIX}/devices/${params.deviceId || params.deviceIdentification}/channels`
+    : `${CHANNEL_PREFIX}/list`;
+  const res = await commonApi('get', url, requestParams, false);
+  return normalizePageResponse(res);
 };
 
 /**
@@ -219,7 +236,7 @@ export const play = (channelId: number) => {
  * @param channelId 通道国标编号
  */
 export const playByDeviceAndChannel = (deviceId: string, channelId: string) => {
-  return commonApi('get', `/api/play/start/${deviceId}/${channelId}`, {}, false);
+  return commonApi('get', `gb28181/play/start/${deviceId}/${channelId}`, {}, false);
 };
 
 /**
@@ -236,16 +253,21 @@ export const stopPlay = (channelId: number) => {
  * @param channelId 通道国标编号
  */
 export const stopPlayByDeviceAndChannel = (deviceId: string, channelId: string) => {
-  return commonApi('get', `/api/play/stop/${deviceId}/${channelId}`);
+  return commonApi('get', `gb28181/play/stop/${deviceId}/${channelId}`);
 };
 
 // ====================== 媒体服务器管理接口 ======================
 
 /**
- * 获取媒体服务器列表
+ * 获取媒体服务器列表（WVP 返回数组，网关可能包装为 { code, msg, data }；统一返回 { data, total } 以兼容列表组件）
  */
-export const getMediaServerList = () => {
-  return commonApi('get', `${SERVER_PREFIX}/media_server/list`);
+export const getMediaServerList = async (params?: Record<string, any>) => {
+  const res = await commonApi('get', `${SERVER_PREFIX}/media_server/list`, params ?? {}, false);
+  // isTransformResponse=false 时 res 为 axios 响应，body 在 res.data；网关包装后为 { code, msg, data: [...] }
+  const body = res?.data;
+  const list = Array.isArray(body) ? body : (body?.data ?? body?.list ?? []);
+  const arr = Array.isArray(list) ? list : [];
+  return { data: arr, total: arr.length };
 };
 
 /**
@@ -298,14 +320,15 @@ export const deleteMediaServer = (id: string) => {
  * 分页查询拉流代理列表
  * @param params 查询参数
  */
-export const getPullProxyList = (params: {
+export const getPullProxyList = async (params: {
   page?: number;
   count?: number;
   query?: string;
   pulling?: boolean;
   mediaServerId?: string;
 }) => {
-  return commonApi('get', `${PROXY_PREFIX}/list`, params);
+  const res = await commonApi('get', `${PROXY_PREFIX}/list`, params, false);
+  return normalizePageResponse(res);
 };
 
 /**
@@ -426,9 +449,10 @@ export const playBack = (deviceId: string, channelId: string, startTime: string,
  * 停止设备录像回放
  * @param deviceId 设备国标编号
  * @param channelId 通道国标编号
+ * @param stream 回放流ID（由 playBack 返回的 data 中获取）
  */
-export const stopPlayBack = (deviceId: string, channelId: string) => {
-  return commonApi('get', `${PLAYBACK_PREFIX}/stop/${deviceId}/${channelId}`);
+export const stopPlayBack = (deviceId: string, channelId: string, stream: string) => {
+  return commonApi('get', `${PLAYBACK_PREFIX}/stop/${deviceId}/${channelId}/${stream}`);
 };
 
 /**
@@ -453,7 +477,7 @@ export const getCloudRecordDateList = (params: {
  * 查询云端录像列表
  * @param params 查询参数
  */
-export const getCloudRecordList = (params: {
+export const getCloudRecordList = async (params: {
   app?: string;
   stream?: string;
   page?: number;
@@ -465,11 +489,12 @@ export const getCloudRecordList = (params: {
   query?: string;
   ascOrder?: boolean;
 }) => {
-  return commonApi('get', `${CLOUD_RECORD_PREFIX}/list`, params);
+  const res = await commonApi('get', `${CLOUD_RECORD_PREFIX}/list`, params, false);
+  return normalizePageResponse(res);
 };
 
 /**
- * 云端录像回放
+ * 云端录像回放（按 app/stream/时间 参数）
  * @param params 回放参数
  */
 export const cloudplayBack = (params: {
@@ -480,6 +505,14 @@ export const cloudplayBack = (params: {
   mediaServerId?: string;
 }) => {
   return commonApi('get', `${CLOUD_RECORD_PREFIX}/play`, params, false);
+};
+
+/**
+ * 获取云端录像播放地址（按录像记录 ID，返回 DownloadFileInfo 含 httpPath）
+ * @param recordId 录像记录 ID
+ */
+export const getCloudRecordPlayPath = (recordId: number) => {
+  return commonApi('get', `${CLOUD_RECORD_PREFIX}/play/path`, { recordId }, false);
 };
 
 /**
@@ -635,7 +668,7 @@ export const speedChannelPlayback = (channelId: number, stream: string, speed: n
  * @param deviceId 设备国标编号
  */
 export const teleBoot = (deviceId: string) => {
-  return commonApi('get', `/api/device/control/teleboot/${deviceId}`);
+  return commonApi('get', `gb28181/device/control/teleboot/${deviceId}`);
 };
 
 /**
@@ -645,7 +678,7 @@ export const teleBoot = (deviceId: string) => {
  * @param recordCmdStr 命令：Record（手动录像），StopRecord（停止手动录像）
  */
 export const recordControl = (deviceId: string, channelId: string, recordCmdStr: string) => {
-  return commonApi('get', `/api/device/control/record`, {
+  return commonApi('get', `gb28181/device/control/record`, {
     deviceId,
     channelId,
     recordCmdStr,
@@ -703,11 +736,13 @@ export const getTree = (params?: {
  * 获取设备的通道列表（用于树形结构）
  * @param deviceId 设备国标编号
  */
-export const getDeviceChannels = (deviceId: string) => {
-  return commonApi('get', `${GB28181_PREFIX}/devices/${deviceId}/channels`, {
+export const getDeviceChannels = async (deviceId: string) => {
+  const res = await commonApi('get', `${GB28181_PREFIX}/devices/${deviceId}/channels`, {
     page: 1,
     count: 10000,
-  });
+  }, false);
+  const { data } = normalizePageResponse(res);
+  return { data, list: data, total: res?.total ?? 0 };
 };
 
 // ====================== 其他工具接口 ======================
@@ -762,5 +797,14 @@ export const subscribeMobilePosition = (id: number, cycle: number, interval: num
     cycle,
     interval,
   });
+};
+
+/**
+ * 生成国标设备接入信息（调用后端脚本，返回文本）
+ * @param count 生成组数，1～100，默认 10
+ */
+export const generateDeviceAccessInfo = (count?: number) => {
+  const params = count != null && count >= 1 && count <= 100 ? { count } : {};
+  return commonApi('get', `${GB28181_PREFIX}/device-access-info/generate`, params, false);
 };
 

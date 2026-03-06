@@ -536,9 +536,11 @@ public class CameraChannelController {
     @Parameter(name = "endTime", description = "结束时间(yyyy-MM-dd HH:mm:ss)", required = false)
     @Parameter(name = "mediaServerId", description = "流媒体ID，置空则查询全部流媒体", required = false)
     @Parameter(name = "callId", description = "每次录像的唯一标识，置空则查询全部流媒体", required = false)
-    public PageInfo<CloudRecordUrl> getListWithUrl(HttpServletRequest request, @RequestParam(required = false) String query, @RequestParam(required = false) String app, @RequestParam(required = false) String stream, @RequestParam int page, @RequestParam int count, @RequestParam(required = false) String startTime, @RequestParam(required = false) String endTime, @RequestParam(required = false) String mediaServerId, @RequestParam(required = false) String callId, @RequestParam(required = false) String remoteHost
+    public PageInfo<CloudRecordUrl> getListWithUrl(HttpServletRequest request, @RequestParam(required = false) String query, @RequestParam(required = false) String app, @RequestParam(required = false) String stream, @RequestParam(required = false) Integer page, @RequestParam(required = false) Integer count, @RequestParam(required = false) String startTime, @RequestParam(required = false) String endTime, @RequestParam(required = false) String mediaServerId, @RequestParam(required = false) String callId, @RequestParam(required = false) String remoteHost
 
     ) {
+        if (page == null || page < 1) page = 1;
+        if (count == null || count < 1) count = 20;
         log.info("[云端录像] 查询URL app->{}, stream->{}, mediaServerId->{}, page->{}, count->{}, startTime->{}, endTime->{}, callId->{}", app, stream, mediaServerId, page, count, startTime, endTime, callId);
 
         List<MediaServer> mediaServers;

@@ -44,9 +44,11 @@ public class RegionController {
     @GetMapping("/page/list")
     public PageInfo<Region> query(
             @RequestParam(required = false) String query,
-            @RequestParam(required = true) int page,
-            @RequestParam(required = true) int count
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer count
     ){
+        if (page == null || page < 1) page = 1;
+        if (count == null || count < 1) count = 20;
         return regionService.query(query, page, count);
     }
 

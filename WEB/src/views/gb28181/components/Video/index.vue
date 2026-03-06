@@ -2,6 +2,9 @@
   <div class="video-wrapper">
     <BasicTable @register="registerTable" v-if="state.isTableMode">
       <template #toolbar>
+        <a-button type="primary" @click="openAccessInfoModal" preIcon="ant-design:export-outlined">
+          导出接入配置
+        </a-button>
         <a-button type="default" @click="handleClickSwap" preIcon="ant-design:swap-outlined">
           切换视图
         </a-button>
@@ -27,23 +30,29 @@
       <VideoCardList :params="params" :api="queryVideoList" @get-method="getMethod"
                      @edit="handleEdit" @refresh="handleRefresh">
         <template #header>
+          <a-button type="primary" @click="openAccessInfoModal" preIcon="ant-design:export-outlined">
+            导出接入配置
+          </a-button>
           <a-button type="default" @click="handleClickSwap" preIcon="ant-design:swap-outlined">
             切换视图
           </a-button>
         </template>
       </VideoCardList>
     </div>
+    <AccessInfoModal @register="registerAccessInfoModal" />
   </div>
 </template>
 <script lang="ts" setup name="noticeSetting">
-import {reactive} from 'vue';
-import {BasicTable, TableAction, useTable} from '@/components/Table';
-import {useMessage} from '@/hooks/web/useMessage';
-import {getBasicColumns, getFormConfig} from "./Data";
-import VideoCardList from "@/views/gb28181/components/VideoCardList/index.vue";
-import {queryVideoList, refreshChannelList} from "@/api/device/gb28181";
+import { reactive } from 'vue';
+import { BasicTable, TableAction, useTable } from '@/components/Table';
+import { useModal } from '@/components/Modal';
+import { useMessage } from '@/hooks/web/useMessage';
+import { getBasicColumns, getFormConfig } from './Data';
+import VideoCardList from '@/views/gb28181/components/VideoCardList/index.vue';
+import AccessInfoModal from './AccessInfoModal.vue';
+import { queryVideoList, refreshChannelList, generateDeviceAccessInfo } from '@/api/device/gb28181';
 
-defineOptions({name: 'Video'})
+defineOptions({ name: 'Video' });
 
 const state = reactive({
   isTableMode: false,
@@ -52,6 +61,8 @@ const state = reactive({
   historyActiveKey: '1',
   SmsActiveKey: '1',
 });
+
+const [registerAccessInfoModal, { openModal: openAccessInfoModalInstance }] = useModal();
 
 // 请求api时附带参数
 const params = {};
@@ -97,6 +108,11 @@ function handleClickSwap() {
   state.isTableMode = !state.isTableMode;
 }
 
+// 打开接入信息弹框：先打开弹框（使用弹窗内的「生成组数」），由弹窗内自动发起一次生成请求
+function openAccessInfoModal() {
+  openAccessInfoModalInstance(true, { content: '', count: 10 });
+}
+
 // 表格刷新
 function handleSuccess() {
   reload({
@@ -136,9 +152,7 @@ const [
   }
 
   .card-list-wrapper {
-    padding: 16px;
-    background-color: #f0f2f5;
-    min-height: calc(100vh - 200px);
+    /* 与直连设备页面样式保持一致，无额外 padding 和背景 */
   }
 }
 </style>

@@ -426,7 +426,7 @@ public interface DeviceMapper {
             " WHERE id in"+
             "<foreach collection='offlineDevices' item='item'  open='(' separator=',' close=')' > #{item.id}</foreach>" +
             " </script>"})
-    void offlineByList(List<Device> offlineDevices);
+    void offlineByList(@Param("offlineDevices") List<Device> offlineDevices);
 
 
     @Update({"<script>" +
@@ -458,7 +458,7 @@ public interface DeviceMapper {
             " WHERE device_id=#{item.deviceId}"+
             "</foreach>" +
             "</script>"})
-    void batchUpdate(List<Device> devices);
+    void batchUpdate(@Param("devices") List<Device> devices);
 
 
     @Select(value = {" <script>" +
@@ -501,5 +501,5 @@ public interface DeviceMapper {
             " WHERE device_id in"+
             "<foreach collection='deviceIds' item='item'  open='(' separator=',' close=')' > #{item}</foreach>" +
             " </script>"})
-    List<Device> queryByDeviceIds(List<String> deviceIds);
+    List<Device> queryByDeviceIds(@Param("deviceIds") List<String> deviceIds);
 }

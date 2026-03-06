@@ -38,7 +38,7 @@
             </template>
           </BasicTable>
         </Form>
-        <!-- 视频源设备表单（新增：摄像头类型选择） -->
+        <!-- 直连设备表单（新增：摄像头类型选择） -->
         <Form
           :labelCol="{ span: 6 }"
           :model="validateInfos"
@@ -319,7 +319,7 @@ const [register, {closeModal}] = useModalInner(async (data) => {
   state.isView = isView;
   state.type = type;
 
-  // 如果是新增视频源设备，重置相关字段
+  // 如果是新增直连设备，重置相关字段
   if (type === 'source' && !isEdit && !isView) {
     modelRef.cameraType = 'custom';
     modelRef.ip = '';
@@ -400,7 +400,7 @@ const getRules = () => {
   const baseRules: any = {
     name: [{required: true, message: '请输入设备名称', trigger: ['change']}],
     // 编辑模式下，cameraType 不是必填的（因为编辑的设备可能没有这个字段）
-    // 只有新增视频源设备时才需要 cameraType
+    // 只有新增直连设备时才需要 cameraType
     cameraType: state.isEdit ? [] : [{required: true, message: '请选择摄像头类型', trigger: ['change']}],
   };
 
@@ -696,7 +696,7 @@ function handleOk() {
     return;
   }
 
-  // 视频源设备特殊处理：直接注册，不再通过ONVIF搜索
+  // 直连设备特殊处理：直接注册，不再通过ONVIF搜索
   if (state.type === 'source' && !state.isEdit && !state.isView) {
     // 先进行自定义验证
     let isValid = true;

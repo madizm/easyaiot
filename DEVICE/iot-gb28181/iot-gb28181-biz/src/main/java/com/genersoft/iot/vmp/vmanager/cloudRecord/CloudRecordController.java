@@ -119,8 +119,8 @@ public class CloudRecordController {
     public PageInfo<CloudRecordItem> openRtpServer(@RequestParam(required = false) String query,
                                                    @RequestParam(required = false) String app,
                                                    @RequestParam(required = false) String stream,
-                                                   @RequestParam int page,
-                                                   @RequestParam int count,
+                                                   @RequestParam(required = false) Integer page,
+                                                   @RequestParam(required = false) Integer count,
                                                    @RequestParam(required = false) String startTime,
                                                    @RequestParam(required = false) String endTime,
                                                    @RequestParam(required = false) String mediaServerId,
@@ -128,6 +128,8 @@ public class CloudRecordController {
                                                    @RequestParam(required = false) Boolean ascOrder
 
     ) {
+        if (page == null || page < 1) page = 1;
+        if (count == null || count < 1) count = 20;
         log.info("[云端录像] 查询 app->{}, stream->{}, mediaServerId->{}, page->{}, count->{}, startTime->{}, endTime->{}, callId->{}", app, stream, mediaServerId, page, count, startTime, endTime, callId);
 
         List<MediaServer> mediaServers;

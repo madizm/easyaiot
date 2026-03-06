@@ -8,104 +8,115 @@
         @tabClick="handleTabClick"
       >
         <TabPane key="1" tab="设备列表">
-          <!-- 列表模式 -->
-          <BasicTable v-if="viewMode === 'table'" @register="registerTable">
-            <template #toolbar>
-              <div class="toolbar-buttons">
-                <a-button type="primary" @click="handleScanOnvif">
-                  <template #icon>
-                    <ScanOutlined/>
+          <Tabs
+            v-model:activeKey="state.deviceListSubKey"
+            :tabBarGutter="24"
+            class="device-list-sub-tabs"
+          >
+            <TabPane key="source" tab="直连设备">
+              <!-- 列表模式 -->
+              <BasicTable v-if="viewMode === 'table'" @register="registerTable">
+                <template #toolbar>
+                  <div class="toolbar-buttons">
+                    <a-button type="primary" @click="handleScanOnvif">
+                      <template #icon>
+                        <ScanOutlined/>
+                      </template>
+                      扫描局域网ONVIF设备
+                    </a-button>
+                    <a-button @click="openAddModal('source')">
+                      <template #icon>
+                        <VideoCameraAddOutlined/>
+                      </template>
+                      新增直连设备
+                    </a-button>
+                    <a-button @click="handleUpdateOnvifDevice">
+                      <template #icon>
+                        <SyncOutlined/>
+                      </template>
+                      更新ONVIF设备
+                    </a-button>
+                    <a-button @click="handleToggleViewMode" type="default">
+                      <template #icon>
+                        <SwapOutlined />
+                      </template>
+                      切换视图
+                    </a-button>
+                  </div>
+                </template>
+                <template #bodyCell="{ column, record }">
+                  <!-- 统一复制功能组件 -->
+                  <template
+                    v-if="['id', 'name', 'model', 'source', 'rtmp_stream', 'http_stream', 'ai_rtmp_stream', 'ai_http_stream'].includes(column.key)">
+            <span style="cursor: pointer" @click="handleCopy(record[column.key])"><Icon
+              icon="tdesign:copy-filled" color="#4287FCFF"/> {{ record[column.key] }}</span>
                   </template>
-                  扫描局域网ONVIF设备
-                </a-button>
-                <a-button @click="openAddModal('source')">
-                  <template #icon>
-                    <VideoCameraAddOutlined/>
+
+                  <!-- 流媒体状态显示 -->
+                  <template v-else-if="column.dataIndex === 'stream_status'">
+                    <a-tag :color="getStreamStatusColor(record.stream_status)">
+                      {{ getStreamStatusText(record.stream_status) }}
+                    </a-tag>
                   </template>
-                  新增视频源设备
-                </a-button>
-                <a-button @click="handleUpdateOnvifDevice">
-                  <template #icon>
-                    <SyncOutlined/>
+
+                  <template v-else-if="column.dataIndex === 'action'">
+                    <TableAction
+                      :actions="getTableActions(record)"
+                    />
                   </template>
-                  更新ONVIF设备
-                </a-button>
-                <a-button @click="handleToggleViewMode" type="default">
-                  <template #icon>
-                    <SwapOutlined />
+                </template>
+              </BasicTable>
+
+              <!-- 卡片模式 -->
+              <div v-else class="card-mode-wrapper">
+                <VideoCardList
+                  ref="videoCardListRef"
+                  :api="getDeviceList"
+                  :params="{}"
+                  @view="handleCardView"
+                  @edit="handleCardEdit"
+                  @delete="handleCardDelete"
+                  @play="handleCardPlay"
+                  @playAI="handleCardPlayAI"
+                  @toggleStream="handleCardToggleStream"
+                >
+                  <template #header>
+                    <a-button type="primary" @click="handleScanOnvif">
+                      <template #icon>
+                        <ScanOutlined/>
+                      </template>
+                      扫描局域网ONVIF设备
+                    </a-button>
+                    <a-button @click="openAddModal('source')">
+                      <template #icon>
+                        <VideoCameraAddOutlined/>
+                      </template>
+                      新增直连设备
+                    </a-button>
+                    <a-button @click="handleUpdateOnvifDevice">
+                      <template #icon>
+                        <SyncOutlined/>
+                      </template>
+                      更新ONVIF设备
+                    </a-button>
+                    <a-button @click="handleToggleViewMode" type="default">
+                      <template #icon>
+                        <SwapOutlined />
+                      </template>
+                      切换视图
+                    </a-button>
                   </template>
-                  切换视图
-                </a-button>
+                </VideoCardList>
               </div>
-            </template>
-            <template #bodyCell="{ column, record }">
-              <!-- 统一复制功能组件 -->
-              <template
-                v-if="['id', 'name', 'model', 'source', 'rtmp_stream', 'http_stream', 'ai_rtmp_stream', 'ai_http_stream'].includes(column.key)">
-          <span style="cursor: pointer" @click="handleCopy(record[column.key])"><Icon
-            icon="tdesign:copy-filled" color="#4287FCFF"/> {{ record[column.key] }}</span>
-              </template>
 
-              <!-- 流媒体状态显示 -->
-              <template v-else-if="column.dataIndex === 'stream_status'">
-                <a-tag :color="getStreamStatusColor(record.stream_status)">
-                  {{ getStreamStatusText(record.stream_status) }}
-                </a-tag>
-              </template>
-
-              <template v-else-if="column.dataIndex === 'action'">
-                <TableAction
-                  :actions="getTableActions(record)"
-                />
-              </template>
-            </template>
-          </BasicTable>
-
-          <!-- 卡片模式 -->
-          <div v-else class="card-mode-wrapper">
-            <VideoCardList
-              ref="videoCardListRef"
-              :api="getDeviceList"
-              :params="{}"
-              @view="handleCardView"
-              @edit="handleCardEdit"
-              @delete="handleCardDelete"
-              @play="handleCardPlay"
-              @playAI="handleCardPlayAI"
-              @toggleStream="handleCardToggleStream"
-            >
-              <template #header>
-                <a-button type="primary" @click="handleScanOnvif">
-                  <template #icon>
-                    <ScanOutlined/>
-                  </template>
-                  扫描局域网ONVIF设备
-                </a-button>
-                <a-button @click="openAddModal('source')">
-                  <template #icon>
-                    <VideoCameraAddOutlined/>
-                  </template>
-                  新增视频源设备
-                </a-button>
-                <a-button @click="handleUpdateOnvifDevice">
-                  <template #icon>
-                    <SyncOutlined/>
-                  </template>
-                  更新ONVIF设备
-                </a-button>
-                <a-button @click="handleToggleViewMode" type="default">
-                  <template #icon>
-                    <SwapOutlined />
-                  </template>
-                  切换视图
-                </a-button>
-              </template>
-            </VideoCardList>
-          </div>
-
-          <DialogPlayer title="视频播放" @register="registerPlayerAddModel"
-                        @success="handlePlayerSuccess"/>
-          <VideoModal @register="registerAddModel" @success="handleSuccess"/>
+              <DialogPlayer title="视频播放" @register="registerPlayerAddModel"
+                            @success="handlePlayerSuccess"/>
+              <VideoModal @register="registerAddModel" @success="handleSuccess"/>
+            </TabPane>
+            <TabPane key="gb28181" tab="国标设备">
+              <Gb28181Video ref="gb28181VideoRef"/>
+            </TabPane>
+          </Tabs>
         </TabPane>
         <TabPane key="2" tab="设备目录">
           <DirectoryManage
@@ -131,9 +142,6 @@
         </TabPane>
         <TabPane key="7" tab="GB28181分屏监控">
           <Gb28181SplitScreen ref="gb28181SplitScreenRef"/>
-        </TabPane>
-        <TabPane key="8" tab="GB28181国标设备">
-          <Gb28181Video ref="gb28181VideoRef"/>
         </TabPane>
         <TabPane key="9" tab="GB28181拉流代理">
           <Gb28181PullProxy ref="gb28181PullProxyRef"/>
@@ -189,7 +197,8 @@ const [registerPlayerAddModel, {openModal: openPlayerAddModel}] = useModal();
 
 // Tab状态
 const state = reactive({
-  activeKey: '1'
+  activeKey: '1',
+  deviceListSubKey: 'source', // 设备列表下子 Tab：source=直连设备, gb28181=国标设备
 });
 
 // 视图模式（默认卡片模式）
@@ -222,7 +231,7 @@ const gb28181NodeRef = ref();
 // Tab切换
 const handleTabClick = (activeKey: string) => {
   state.activeKey = activeKey;
-  // 切换到设备列表标签页时，刷新数据
+  // 切换到设备列表标签页时，刷新直连设备数据
   if (activeKey === '1') {
     handleSuccess();
   }
@@ -245,9 +254,6 @@ const handleTabClick = (activeKey: string) => {
   // 切换到GB28181相关标签页时，可以在这里添加刷新逻辑
   // if (activeKey === '7' && gb28181SplitScreenRef.value) {
   //   gb28181SplitScreenRef.value.refresh();
-  // }
-  // if (activeKey === '8' && gb28181VideoRef.value) {
-  //   gb28181VideoRef.value.refresh();
   // }
   // if (activeKey === '9' && gb28181PullProxyRef.value) {
   //   gb28181PullProxyRef.value.refresh();
@@ -672,6 +678,13 @@ onUnmounted(() => {
     display: flex;
     align-items: center;
     gap: 8px;
+  }
+
+  // 设备列表下的子 Tabs（直连设备 / 国标设备）
+  .device-list-sub-tabs {
+    :deep(.ant-tabs-nav) {
+      margin-bottom: 12px;
+    }
   }
 }
 </style>

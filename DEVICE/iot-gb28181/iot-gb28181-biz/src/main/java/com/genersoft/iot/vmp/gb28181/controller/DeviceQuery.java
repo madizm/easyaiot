@@ -2,6 +2,7 @@ package com.genersoft.iot.vmp.gb28181.controller;
 
 import com.alibaba.fastjson2.JSONObject;
 import com.genersoft.iot.vmp.conf.DynamicTask;
+import com.genersoft.iot.vmp.conf.SipConfig;
 import com.genersoft.iot.vmp.conf.UserSetting;
 import com.genersoft.iot.vmp.conf.exception.ControllerException;
 import com.genersoft.iot.vmp.conf.security.JwtUtils;
@@ -37,6 +38,8 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
+import java.security.SecureRandom;
+import java.util.Locale;
 
 @Tag(name  = "国标设备查询", description = "国标设备查询")
 @SuppressWarnings("rawtypes")
@@ -69,6 +72,9 @@ public class DeviceQuery {
 	@Autowired
 	private IRedisRpcService redisRpcService;
 
+	@Autowired
+	private SipConfig sipConfig;
+
 	@Operation(summary = "查询国标设备", security = @SecurityRequirement(name = JwtUtils.HEADER))
 	@Parameter(name = "deviceId", description = "设备国标编号", required = true)
 	@GetMapping("/devices/{deviceId}")
@@ -85,7 +91,9 @@ public class DeviceQuery {
 	@Parameter(name = "status", description = "状态", required = false)
 	@GetMapping("/devices")
 	@Options()
-	public PageInfo<Device> devices(int page, int count, String query, Boolean status){
+	public PageInfo<Device> devices(@RequestParam(required = false) Integer page, @RequestParam(required = false) Integer count, String query, Boolean status){
+		if (page == null || page < 1) page = 1;
+		if (count == null || count < 1) count = 20;
 		if (ObjectUtils.isEmpty(query)){
 			query = null;
 		}
@@ -102,10 +110,12 @@ public class DeviceQuery {
 	@Parameter(name = "online", description = "是否在线")
 	@Parameter(name = "channelType", description = "设备/子目录-> false/true")
 	public PageInfo<DeviceChannel> channels(@PathVariable String deviceId,
-											   int page, int count,
+											   @RequestParam(required = false) Integer page, @RequestParam(required = false) Integer count,
 											   @RequestParam(required = false) String query,
 											   @RequestParam(required = false) Boolean online,
 											   @RequestParam(required = false) Boolean channelType) {
+		if (page == null || page < 1) page = 1;
+		if (count == null || count < 1) count = 20;
 		if (ObjectUtils.isEmpty(query)) {
 			query = null;
 		}
@@ -118,8 +128,10 @@ public class DeviceQuery {
 	@Parameter(name = "page", description = "当前页", required = true)
 	@Parameter(name = "count", description = "每页查询数量", required = true)
 	@Parameter(name = "query", description = "查询内容")
-	public PageInfo<DeviceChannel> streamChannels(int page, int count,
+	public PageInfo<DeviceChannel> streamChannels(@RequestParam(required = false) Integer page, @RequestParam(required = false) Integer count,
 												  @RequestParam(required = false) String query) {
+		if (page == null || page < 1) page = 1;
+		if (count == null || count < 1) count = 20;
 		if (ObjectUtils.isEmpty(query)) {
 			query = null;
 		}
@@ -173,12 +185,14 @@ public class DeviceQuery {
 	@GetMapping("/sub_channels/{deviceId}/{channelId}/channels")
 	public PageInfo<DeviceChannel> subChannels(@PathVariable String deviceId,
 												  @PathVariable String channelId,
-												  int page,
-												  int count,
+												  @RequestParam(required = false) Integer page,
+												  @RequestParam(required = false) Integer count,
 												  @RequestParam(required = false) String query,
 												  @RequestParam(required = false) Boolean online,
 												  @RequestParam(required = false) Boolean channelType){
 
+		if (page == null || page < 1) page = 1;
+		if (count == null || count < 1) count = 20;
 		DeviceChannel deviceChannel = deviceChannelService.getOne(deviceId,channelId);
 		if (deviceChannel == null) {
 			PageInfo<DeviceChannel> deviceChannelPageResult = new PageInfo<>();
@@ -429,5 +443,75 @@ public class DeviceQuery {
 	@Parameter(name = "interval", description = "报送间隔", required = true)
 	public void subscribeMobilePosition(int id, int cycle, int interval) {
 		deviceService.subscribeMobilePosition(id, cycle, interval);
+	}
+
+	@GetMapping("/device-access-info/generate")
+	@Operation(summary = "生成国标设备接入信息", security = @SecurityRequirement(name = JwtUtils.HEADER))
+	@Parameter(name = "count", description = "生成组数，1～100，默认10", required = false)
+	public WVPResult<String> generateDeviceAccessInfo(@RequestParam(required = false) Integer count) {
+		int cnt = (count == null || count < 1) ? 10 : Math.min(count, 100);
+		String sipServerId = sipConfig.getId() != null ? sipConfig.getId() : "44010200492000000001";
+		String sipDomain = sipConfig.getDomain() != null ? sipConfig.getDomain() : "4401020049";
+		int sipPort = sipConfig.getPort() != null ? sipConfig.getPort() : 5060;
+		String sipAddr = (sipConfig.getShowIp() != null && !sipConfig.getShowIp().isEmpty())
+				? sipConfig.getShowIp()
+				: sipConfig.getIp();
+		if (sipAddr == null || sipAddr.isEmpty()) {
+			throw new ControllerException(ErrorCode.ERROR100.getCode(), "请先配置 sip.ip 或 sip.showIp（设备接入的 SIP 服务器地址）");
+		}
+		String transport = "UDP";
+		String protocolVersion = "GB/T28181-2022";
+		String localSipPort = "5060";
+
+		// 设备国标 ID 前缀：取 domain 前 10 位，不足补 0，用于生成 20 位国标 ID
+		String domainPrefix = (sipDomain != null && sipDomain.length() >= 10)
+				? sipDomain.substring(0, 10)
+				: String.format(Locale.ROOT, "%-10s", sipDomain != null ? sipDomain : "4401020049").replace(' ', '0');
+		if (domainPrefix.length() > 10) domainPrefix = domainPrefix.substring(0, 10);
+
+		SecureRandom rng = new SecureRandom();
+		StringBuilder out = new StringBuilder();
+		out.append("生成 GB28181 设备接入信息，共 ").append(cnt).append(" 组（SIP 服务器: ").append(sipAddr).append(" :").append(sipPort).append("）\n\n");
+
+		for (int i = 1; i <= cnt; i++) {
+			// 每次随机生成 10 位数字后缀，保证 20 位国标 ID 且每次请求都随机
+			String suffix = randomDigits(rng, 10);
+			String deviceId = domainPrefix + suffix;
+			String password = randomAlphanumeric(rng, 32);
+
+			out.append("========== 设备组 #").append(i).append(" ==========\n");
+			out.append("传输协议：").append(transport).append("\n");
+			out.append("协议版本：").append(protocolVersion).append("\n");
+			out.append("SIP服务器ID：").append(sipServerId).append("\n");
+			out.append("SIP服务器域：").append(sipDomain).append("\n");
+			out.append("SIP服务器地址：").append(sipAddr).append("\n");
+			out.append("SIP服务器端口：").append(sipPort).append("\n");
+			out.append("SIP用户名：").append(deviceId).append("\n");
+			out.append("SIP用户认证ID：").append(deviceId).append("\n");
+			out.append("SIP用户认证密码：").append(password).append("\n");
+			out.append("本地SIP端口：").append(localSipPort).append("\n");
+			out.append("\n");
+		}
+		out.append("========== 生成完成，共 ").append(cnt).append(" 组 ==========");
+		return WVPResult.success(out.toString());
+	}
+
+	/** 生成指定长度的随机数字串（0-9） */
+	private static String randomDigits(SecureRandom rng, int len) {
+		StringBuilder sb = new StringBuilder(len);
+		for (int i = 0; i < len; i++) {
+			sb.append(rng.nextInt(10));
+		}
+		return sb.toString();
+	}
+
+	/** 生成指定长度的随机字母数字串（A-Za-z0-9），用于认证密码 */
+	private static String randomAlphanumeric(SecureRandom rng, int len) {
+		String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+		StringBuilder sb = new StringBuilder(len);
+		for (int i = 0; i < len; i++) {
+			sb.append(chars.charAt(rng.nextInt(chars.length())));
+		}
+		return sb.toString();
 	}
 }
