@@ -498,48 +498,10 @@ compensate third parties for damages caused by usage. All EasyAIoT-related resou
   <img src=".image/banner/banner1002.png" alt="Screenshot 16" width="49%">
 </div>
 
-## 🛠️ Service Support
-
-<p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-We offer various service options to help you gain an in-depth understanding of the EasyAIoT platform and its code. Through product documentation, technical exchange groups, paid tutorials, and more, you will receive the following services:
-</p>
-
-<table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-<thead>
-<tr style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
-<th style="padding: 15px; text-align: left; font-weight: 600;">Service Item</th>
-<th style="padding: 15px; text-align: left; font-weight: 600;">Service Content</th>
-<th style="padding: 15px; text-align: center; font-weight: 600;">Service Fee</th>
-<th style="padding: 15px; text-align: left; font-weight: 600;">Service Method</th>
-</tr>
-</thead>
-<tbody>
-<tr style="background-color: #f8f9fa;">
-<td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50;">System Deployment</td>
-<td style="padding: 15px; border: 1px solid #e0e0e0; color: #444;">Complete EasyAIoT deployment in the customer-specified network and hardware environment</td>
-<td style="padding: 15px; border: 1px solid #e0e0e0; text-align: center; color: #e74c3c; font-weight: 600;">¥1000</td>
-<td style="padding: 15px; border: 1px solid #e0e0e0; color: #444;">Online Deployment Support</td>
-</tr>
-<tr>
-<td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50;">Technical Support</td>
-<td style="padding: 15px; border: 1px solid #e0e0e0; color: #444;">Provide solutions for issues encountered during deployment and functional usage</td>
-<td style="padding: 15px; border: 1px solid #e0e0e0; text-align: center; color: #e74c3c; font-weight: 600;">¥500</td>
-<td style="padding: 15px; border: 1px solid #e0e0e0; color: #444;">Online Remote Support within 30 Minutes</td>
-</tr>
-<tr>
-<td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50;">Other Services</td>
-<td style="padding: 15px; border: 1px solid #e0e0e0; color: #444;">Customized development for vertical industry solutions; tailored duration and functional services</td>
-<td style="padding: 15px; border: 1px solid #e0e0e0; text-align: center; color: #e74c3c; font-weight: 600;">Negotiable</td>
-<td style="padding: 15px; border: 1px solid #e0e0e0; color: #444;">Negotiable</td>
-</tr>
-</tbody>
-</table>
-
 ## 📞 Contact Information (After adding WeChat, please follow the official account to join the technical exchange group)
 
 <div>
   <img src=".image/联系方式.jpg" alt="Contact Information" width="30%" style="margin-right: 50px;">
-  <img src=".image/联系方式2.png" alt="Contact Information" width="30%">
 </div>
 
 ## 👥 Official Account

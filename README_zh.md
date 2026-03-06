@@ -495,48 +495,10 @@ EasyAIoT是一个开源学习项目，与商业行为无关。用户在使用该
   <img src=".image/banner/banner1002.png" alt="Screenshot 16" width="49%">
 </div>
 
-## 🛠️ 服务支持
-
-<p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-我们提供了各种服务方式帮助您深入了解EasyAIoT平台和代码，通过产品文档、技术交流群、付费教学等方式，你将获得如下服务：
-</p>
-
-<table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-<thead>
-<tr style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
-<th style="padding: 15px; text-align: left; font-weight: 600;">服务项</th>
-<th style="padding: 15px; text-align: left; font-weight: 600;">服务内容</th>
-<th style="padding: 15px; text-align: center; font-weight: 600;">服务收费</th>
-<th style="padding: 15px; text-align: left; font-weight: 600;">服务方式</th>
-</tr>
-</thead>
-<tbody>
-<tr style="background-color: #f8f9fa;">
-<td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50;">系统部署</td>
-<td style="padding: 15px; border: 1px solid #e0e0e0; color: #444;">在客户指定的网络和硬件环境中完成EasyAIoT部署</td>
-<td style="padding: 15px; border: 1px solid #e0e0e0; text-align: center; color: #e74c3c; font-weight: 600;">1000元</td>
-<td style="padding: 15px; border: 1px solid #e0e0e0; color: #444;">线上部署支持</td>
-</tr>
-<tr>
-<td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50;">技术支持</td>
-<td style="padding: 15px; border: 1px solid #e0e0e0; color: #444;">提供各类部署、功能使用中遇到的问题答疑</td>
-<td style="padding: 15px; border: 1px solid #e0e0e0; text-align: center; color: #e74c3c; font-weight: 600;">500元</td>
-<td style="padding: 15px; border: 1px solid #e0e0e0; color: #444;">半小时内 线上远程支持</td>
-</tr>
-<tr>
-<td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50;">其他服务</td>
-<td style="padding: 15px; border: 1px solid #e0e0e0; color: #444;">垂直领域解决方案定制化开发；定制化时长、功能服务等</td>
-<td style="padding: 15px; border: 1px solid #e0e0e0; text-align: center; color: #e74c3c; font-weight: 600;">面议</td>
-<td style="padding: 15px; border: 1px solid #e0e0e0; color: #444;">面议</td>
-</tr>
-</tbody>
-</table>
-
 ## 📞 联系方式（添加微信后，需关注公众号，拉入技术交流群）
 
 <div>
   <img src=".image/联系方式.jpg" alt="联系方式" width="30%" style="margin-right: 50px;">
-  <img src=".image/联系方式2.png" alt="联系方式" width="30%">
 </div>
 
 ## 👥 公众号
