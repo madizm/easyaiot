@@ -265,6 +265,7 @@ main() {
     print_info "  5. 迁移数据（如果需要）"
     print_info "  6. 重新创建并启动 PostgreSQL 容器"
     print_info "  7. 测试数据库连接"
+    print_info "  8. 确保 iot-edge20 数据库存在（若不存在则创建）"
     echo ""
     
     read -p "是否继续？(y/N): " -r response
@@ -279,7 +280,15 @@ main() {
     verify_data_directory
     start_postgresql
     test_connection
-    
+
+    # 确保 iot-edge20 数据库存在
+    if [ -x "$SCRIPT_DIR/create_iot_edge20_db.sh" ]; then
+        print_section "确保 iot-edge20 数据库存在"
+        "$SCRIPT_DIR/create_iot_edge20_db.sh" || print_warning "创建 iot-edge20 数据库脚本执行异常，可稍后手动运行: $SCRIPT_DIR/create_iot_edge20_db.sh"
+    else
+        print_warning "未找到可执行脚本 create_iot_edge20_db.sh，跳过创建 iot-edge20 数据库"
+    fi
+
     print_section "修复完成"
     print_success "PostgreSQL 修复脚本执行完成"
     echo ""
