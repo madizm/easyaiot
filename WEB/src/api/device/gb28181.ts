@@ -44,6 +44,31 @@ const normalizeDeviceList = (list: any[]) => (list || []).map((item) => ({
   deviceIdentification: item.deviceIdentification ?? item.deviceId,
 }));
 
+/** 设备列表：统一返回 { data, list, total }，并补齐页面依赖字段 */
+const normalizeGbDeviceList = (res: any) => {
+  const { data, total } = normalizePageResponse(res);
+  const list = normalizeDeviceList(data).map((item) => ({
+    ...item,
+    localIp: item.localIp ?? item.ip,
+    updatedTime: item.updatedTime ?? item.updateTime,
+  }));
+  return { data: list, list, total };
+};
+
+/** 通道列表：统一返回 { data, list, total }，并补齐页面依赖字段 */
+const normalizeGbChannelList = (res: any) => {
+  const { data, total } = normalizePageResponse(res);
+  const list = (data || []).map((item: any) => ({
+    ...item,
+    deviceIdentification: item.deviceIdentification ?? item.deviceId ?? item.parentId,
+    manufacturer: item.manufacturer ?? item.manufacture ?? '',
+    manufacture: item.manufacture ?? item.manufacturer ?? '',
+    createdTime: item.createdTime ?? item.createTime,
+    updatedTime: item.updatedTime ?? item.updateTime,
+  }));
+  return { data: list, list, total };
+};
+
 // ====================== 设备管理接口 ======================
 
 /**
