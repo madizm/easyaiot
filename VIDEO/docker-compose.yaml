@@ -25,6 +25,14 @@ services:
       - ./model:/app/model
       # 告警图片目录（与iot-sink服务共享，用于大模型实时分析等服务的图片上传）
       - ./alert_images:/app/alert_images
+      # SRS录像目录（与SRS服务共享，用于访问SRS生成的录像文件）
+      # 重要说明：
+      # 1. SRS的docker-compose中挂载的是 /data:/data:rw（宿主机路径为 /data）
+      # 2. SRS录像实际存储在 /data/playbacks 目录下（由SRS配置的dvr_path决定）
+      # 3. 这里挂载相同的宿主机路径 /data 到容器的 /data，确保VIDEO服务可以访问SRS生成的录像文件
+      # 4. 在容器内，SRS录像文件位于 /data/playbacks/live/{device_id}/YYYY/MM/DD/*.flv
+      # 5. 应用数据目录在 /app/data，SRS录像目录在 /data，两者是不同的挂载点
+      - /data:/data:rw
       # 环境变量配置文件（用于Docker部署，使用.env.docker）
       - ./.env.docker:/app/.env:ro
 
