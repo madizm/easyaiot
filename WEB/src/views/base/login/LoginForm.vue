@@ -1,8 +1,7 @@
 <script lang="ts" setup>
 import { computed, reactive, ref, unref } from 'vue'
 
-import { Checkbox, Col, Divider, Form, Input, Row } from 'ant-design-vue'
-import { AlipayCircleFilled, GithubFilled, WechatFilled } from '@ant-design/icons-vue'
+import { Checkbox, Col, Form, Input, Row } from 'ant-design-vue'
 import LoginFormTitle from './LoginFormTitle.vue'
 
 import { LoginStateEnum, useFormRules, useFormValid, useLoginState } from './useLogin'
@@ -178,60 +177,6 @@ async function handleLogin(params) {
         {{ t('sys.login.registerButton') }}
       </a-button> -->
     </FormItem>
-    <Row class="enter-x" :gutter="[16, 16]">
-      <Col :md="8" :xs="24">
-        <a-button block @click="setLoginState(LoginStateEnum.MOBILE)">
-          {{ t('sys.login.mobileSignInFormTitle') }}
-        </a-button>
-      </Col>
-      <Col :md="8" :xs="24">
-        <a-button block @click="setLoginState(LoginStateEnum.QR_CODE)">
-          {{ t('sys.login.qrSignInFormTitle') }}
-        </a-button>
-      </Col>
-      <Col :md="8" :xs="24">
-        <a-button block @click="setLoginState(LoginStateEnum.REGISTER)">
-          {{ t('sys.login.registerButton') }}
-        </a-button>
-      </Col>
-    </Row>
-
-    <Divider class="enter-x">
-      {{ t('sys.login.otherSignIn') }}
-    </Divider>
-
-    <div class="enter-x flex justify-evenly" :class="`${prefixCls}-sign-in-way`">
-      <GithubFilled />
-      <WechatFilled />
-      <AlipayCircleFilled />
-      <!-- <GoogleCircleFilled /> -->
-      <!-- <TwitterCircleFilled /> -->
-    </div>
-
-    <!-- 萌新必读 -->
-    <Divider class="enter-x">
-      萌新必读
-    </Divider>
-    <div class="enter-x flex justify-evenly button-tabs" :class="`${prefixCls}-sign-in-way`">
-      <a-button href="https://gitee.com/vegetable-chicken-blog/basiclab-iot/raw/master/iot-web/public/resource/img/wechart.jpg" target="_blank" class="w-1/4">
-        📚开发指南
-      </a-button>
-      <a-button href="https://gitee.com/vegetable-chicken-blog/basiclab-iot/raw/master/iot-web/public/resource/img/wechart.jpg" target="_blank" class="w-1/4 pl-1">
-        🔥视频教程
-      </a-button>
-      <a-button href="https://gitee.com/vegetable-chicken-blog/basiclab-iot/raw/master/iot-web/public/resource/img/wechart.jpg" target="_blank" class="w-1/4 pl-1">
-        ⚡面试手册
-      </a-button>
-      <a-button href="https://gitee.com/vegetable-chicken-blog/basiclab-iot/raw/master/iot-web/public/resource/img/wechart.jpg" target="_blank" class="w-1/4 pl-1">
-        🤝外包咨询
-      </a-button>
-    </div>
   </Form>
   <Verify ref="verify" mode="pop" :captcha-type="captchaType" :img-size="{ width: '360px', height: '180px' }" @success="handleLogin" />
 </template>
-
-<style  lang="less">
-.button-tabs {
-  gap: 0.58rem;
-}
-</style>
