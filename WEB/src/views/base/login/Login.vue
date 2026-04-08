@@ -2,9 +2,6 @@
 import { computed } from 'vue'
 import LoginForm from './LoginForm.vue'
 import ForgetPasswordForm from './ForgetPasswordForm.vue'
-import RegisterForm from './RegisterForm.vue'
-import MobileForm from './MobileForm.vue'
-import QrCodeForm from './QrCodeForm.vue'
 import { AppDarkModeToggle, AppLocalePicker, AppLogo } from '@/components/Application'
 import { useGlobSetting } from '@/hooks/setting'
 import { useI18n } from '@/hooks/web/useI18n'
@@ -57,9 +54,6 @@ const title = computed(() => globSetting?.title ?? '')
               <!--   平台登录框           -->
               <LoginForm />
               <ForgetPasswordForm />
-              <RegisterForm />
-              <MobileForm />
-              <QrCodeForm />
             </div>
           </div>
         </div>
@@ -91,9 +85,6 @@ const title = computed(() => globSetting?.title ?? '')
           >
             <LoginForm />
             <ForgetPasswordForm />
-            <RegisterForm />
-            <MobileForm />
-            <QrCodeForm />
           </div>
         </div>
       </div>
