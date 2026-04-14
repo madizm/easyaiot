@@ -129,10 +129,25 @@ const transform: AxiosTransform = {
     const params = config.params || {}
     const data = config.data || false
     const isFormDataPayload = typeof FormData !== 'undefined' && data instanceof FormData
-
-    // FormData 交给浏览器自动设置 multipart boundary，避免被 axios 按 JSON 序列化成 file: {}
-    if (isFormDataPayload && config.headers) {
-      const headers = config.headers as any
+    const headers = config.headers as any
+    const getContentType = () => {
+      if (!headers) return undefined
+      if (typeof headers.get === 'function')
+        return headers.get('Content-Type') || headers.get('content-type')
+      return headers['Content-Type'] || headers['content-type']
+    }
+    const setContentType = (value: string) => {
+      if (!headers) return
+      if (typeof headers.set === 'function') {
+        headers.set('Content-Type', value)
+      }
+      else {
+        headers['Content-Type'] = value
+        delete headers['content-type']
+      }
+    }
+    const removeContentType = () => {
+      if (!headers) return
       if (typeof headers.delete === 'function') {
         headers.delete('Content-Type')
         headers.delete('content-type')
@@ -141,6 +156,22 @@ const transform: AxiosTransform = {
         delete headers['Content-Type']
         delete headers['content-type']
       }
+    }
+    const hasExplicitContentType = Boolean(getContentType())
+
+    // FormData 交给浏览器自动设置 multipart boundary，避免被 axios 按 JSON 序列化成 file: {}
+    if (isFormDataPayload) {
+      removeContentType()
+    }
+    // 非 FormData 且未显式指定时，按对象请求体自动补 JSON（支持单请求自行覆盖）
+    else if (
+      !hasExplicitContentType
+      && config.method?.toUpperCase() !== RequestEnum.GET
+      && data
+      && typeof data === 'object'
+      && !Array.isArray(data)
+    ) {
+      setContentType(ContentTypeEnum.JSON)
     }
 
     formatDate && data && !isString(data) && !isFormDataPayload && formatRequestDate(data)
@@ -311,9 +342,9 @@ function createAxios(opt?: Partial<CreateAxiosOptions>) {
         // 基础接口地址
         // baseURL: globSetting.apiUrl,
 
-        headers: { 'Content-Type': ContentTypeEnum.JSON },
-        // 如果是form-data格式
-        // headers: { 'Content-Type': ContentTypeEnum.FORM_URLENCODED },
+        // 默认不写死 Content-Type，由 beforeRequestHook 根据请求体自动推断；
+        // 若单个接口需要指定类型，可在该请求里传 headers 覆盖
+        headers: {},
         // 数据处理方式
         transform: clone(transform),
         // 配置项，下面的选项都可以在独立的接口请求中覆盖
