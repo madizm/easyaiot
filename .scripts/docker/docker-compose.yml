@@ -434,7 +434,7 @@ services:
   # Apache Flink Session 集群（JobManager + TaskManager）
   # Web UI: http://localhost:8081
   FlinkJobManager:
-    image: flink:1.20.3-scala_2.12-java11
+    image: flink:scala_2.12-java21
     container_name: flink-jobmanager
     restart: always
     ports:
@@ -462,7 +462,7 @@ services:
       - easyaiot-network
 
   FlinkTaskManager:
-    image: flink:1.20.3-scala_2.12-java11
+    image: flink:scala_2.12-java21
     container_name: flink-taskmanager
     restart: always
     depends_on:
@@ -497,7 +497,7 @@ services:
   # Apache Doris（单 FE + 单 BE，hostname 与 FE_SERVERS/BE_ADDR 对应）
   # FE Web: http://localhost:8030  MySQL 协议端口: 9030
   DorisFE:
-    image: apache/doris:2.0.15-fe-x86_64
+    image: apache/doris:fe-4.0.5
     container_name: doris-fe-server
     hostname: fe
     restart: always
@@ -523,7 +523,7 @@ services:
       - easyaiot-network
 
   DorisBE:
-    image: apache/doris:2.0.15-be-x86_64
+    image: apache/doris:be-4.0.5
     container_name: doris-be-server
     hostname: be
     restart: always
