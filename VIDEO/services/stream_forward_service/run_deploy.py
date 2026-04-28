@@ -1066,11 +1066,11 @@ def pusher_worker():
                                 pusher_process = None
                                 device_pusher_processes.pop(device_id, None)
                                 device_pushers.pop(device_id, None)
-                        else:
-                            device_push_success_counts[device_id] = device_push_success_counts.get(device_id, 0) + 1
-                            if device_push_success_counts[device_id] >= 150:
-                                _mark_quality_success()
-                                device_push_success_counts[device_id] = 0
+                            else:
+                                device_push_success_counts[device_id] = device_push_success_counts.get(device_id, 0) + 1
+                                if device_push_success_counts[device_id] >= 150:
+                                    _mark_quality_success()
+                                    device_push_success_counts[device_id] = 0
                         except Exception as e:
                             logger.error(f"❌ 设备 {device_id} 推送帧失败: {str(e)}")
                             if pusher_process and pusher_process.poll() is not None:
