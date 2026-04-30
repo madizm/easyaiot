@@ -196,18 +196,3 @@ EXPOSE 48088
 # 启动应用（使用exec形式）
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
 
-# ============ iot-video 服务镜像（海康/大华 SDK 设备信息） ============
-FROM runtime-base AS iot-video
-COPY --from=builder /app/iot-video/iot-video-biz/target/iot-video-biz.jar app.jar
-# 服务端口
-ENV SERVER_PORT=48094
-# 健康检查（未引入 actuator，使用 SpringDoc OpenAPI 文档端点）
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:${SERVER_PORT}/v3/api-docs || exit 1
-# 切换到非root用户
-USER appuser
-# 暴露端口
-EXPOSE 48094
-# 启动应用（使用exec形式）
-ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
-

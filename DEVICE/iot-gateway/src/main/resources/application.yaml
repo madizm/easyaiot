@@ -134,13 +134,6 @@ spring:
           filters:
             - RewritePath=/admin-api/gb28181/(?<segment>.*), /api/$\{segment} # 将 /admin-api/gb28181 前缀重写为 /api
             - RewritePath=/admin-api/gb28181/v3/api-docs, /v3/api-docs # 配置，保证转发到 /v3/api-docs
-        # 视频接入（海康 ISUP / 大华 SDK / RTSP，iot-video-biz）
-        - id: iot-video-admin-api
-          uri: lb://iot-video
-          predicates:
-            - Path=/admin-api/video/**
-          filters:
-            - RewritePath=/admin-api/video/(?<segment>.*), /$\{segment}
       x-forwarded:
         prefix-enabled: false # 避免 Swagger 重复带上额外的 /admin-api/system 前缀
 

@@ -374,39 +374,6 @@ services:
       start_period: 120s
     restart: always
 
-  iot-video:
-    image: iot-video-biz:latest
-    container_name: iot-video
-    user: root
-    environment:
-      - TZ=Asia/Shanghai # 配置程序默认时区为上海（中国标准时间）
-      - JAVA_OPTS=-Xms512m -Xmx512m
-      - SPRING_PROFILES_ACTIVE=local # 指定程序运行环境
-      - SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR=Nacos:8848 # 配置中心地址（使用Docker服务名）
-      - SPRING_CLOUD_NACOS_CONFIG_NAMESPACE= # 使用默认命名空间（public）
-      - SPRING_CLOUD_NACOS_SERVER_ADDR=Nacos:8848 # 注册中心地址（使用Docker服务名）
-      - SPRING_CLOUD_NACOS_DISCOVERY_NAMESPACE= # 使用默认命名空间（public）
-      # SkyWalking配置（如需要，请取消注释并配置）
-      # - JAVA_TOOL_OPTIONS=-javaagent:/data/skywalking/skywalking-agent/skywalking-agent.jar
-      # - SW_AGENT_NAME=iot-video
-      # - SW_AGENT_TRACE_IGNORE_PATH=Redisson/PING,/actuator/**,/admin/**
-      # - SW_AGENT_COLLECTOR_BACKEND_SERVICES=[YOUR_SKYWALKING_ADDR]
-    volumes:
-      - ${HOME}/docker/iot-device/logs:/root/logs/
-      # - /data/skywalking/skywalking-agent:/data/skywalking/skywalking-agent
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:48094/v3/api-docs"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 120s
-    restart: always
-    networks:
-      - easyaiot-network
-    depends_on:
-      iot-infra:
-        condition: service_healthy
-
 networks:
   easyaiot-network:
     name: easyaiot-network

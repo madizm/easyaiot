@@ -42,7 +42,6 @@
         <module>iot-sink</module>
         <module>iot-message</module>
         <module>iot-gb28181</module>
-        <module>iot-video</module>
     </modules>
 
     <name>${project.artifactId}</name>
