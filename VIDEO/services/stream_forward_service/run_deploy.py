@@ -69,11 +69,16 @@ def get_flask_app():
 load_dotenv()
 
 # OpenCV 经 FFmpeg 拉 RTSP 时的默认选项（与抓拍/实时算法服务对齐）
-# 默认 udp，与海康子码流常见配置一致；需 TCP 时设 OPENCV_FFMPEG_RTSP_TRANSPORT=tcp 或 FFMPEG_RTSP_TRANSPORT=tcp
+# 默认 tcp；局域网要低延迟可设 AI_RTSP_TRANSPORT=udp 或 OPENCV_FFMPEG_RTSP_TRANSPORT=udp
 if not os.getenv("OPENCV_FFMPEG_CAPTURE_OPTIONS"):
-    _rtsp_tr = (os.getenv("OPENCV_FFMPEG_RTSP_TRANSPORT") or os.getenv("FFMPEG_RTSP_TRANSPORT") or "udp").strip().lower()
+    _rtsp_tr = (
+        os.getenv("AI_RTSP_TRANSPORT")
+        or os.getenv("OPENCV_FFMPEG_RTSP_TRANSPORT")
+        or os.getenv("FFMPEG_RTSP_TRANSPORT")
+        or "tcp"
+    ).strip().lower()
     if _rtsp_tr not in ("tcp", "udp"):
-        _rtsp_tr = "udp"
+        _rtsp_tr = "tcp"
     os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = (
         f"rtsp_transport;{_rtsp_tr}"
         "|stimeout;10000000"

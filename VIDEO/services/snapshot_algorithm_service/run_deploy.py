@@ -175,18 +175,20 @@ load_dotenv()
 
 # OpenCV FFmpeg 解码参数（与 stream_forward_service / realtime_algorithm_service 对齐）
 # 抓拍任务也会受上游流抖动影响，设置默认捕获选项可减少解码花屏/撕裂。
-# RTSP 传输：优先 AI_RTSP_TRANSPORT，其次 OPENCV_/FFMPEG_；默认 udp（常见摄像头习惯；若灰屏/花屏多可设 AI_RTSP_TRANSPORT=tcp）
-if not os.getenv("OPENCV_FFMPEG_CAPTURE_OPTIONS"):
-    _rtsp_tr = (
-        os.getenv("AI_RTSP_TRANSPORT")
-        or os.getenv("OPENCV_FFMPEG_RTSP_TRANSPORT")
-        or os.getenv("FFMPEG_RTSP_TRANSPORT")
-        or "udp"
-    ).strip().lower()
-    if _rtsp_tr not in ("tcp", "udp"):
-        _rtsp_tr = "udp"
+# RTSP 传输：优先 AI_RTSP_TRANSPORT，其次 OPENCV_/FFMPEG_；默认 tcp（抗丢包更稳；局域网要低延迟可设 AI_RTSP_TRANSPORT=udp）
+_EFFECTIVE_RTSP_TRANSPORT = (
+    os.getenv("AI_RTSP_TRANSPORT")
+    or os.getenv("OPENCV_FFMPEG_RTSP_TRANSPORT")
+    or os.getenv("FFMPEG_RTSP_TRANSPORT")
+    or "tcp"
+).strip().lower()
+if _EFFECTIVE_RTSP_TRANSPORT not in ("tcp", "udp"):
+    _EFFECTIVE_RTSP_TRANSPORT = "tcp"
+
+_OPENCV_FFMPEG_OPTIONS_CUSTOM = bool(os.getenv("OPENCV_FFMPEG_CAPTURE_OPTIONS"))
+if not _OPENCV_FFMPEG_OPTIONS_CUSTOM:
     os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = (
-        f"rtsp_transport;{_rtsp_tr}"
+        f"rtsp_transport;{_EFFECTIVE_RTSP_TRANSPORT}"
         "|stimeout;10000000"
         "|rw_timeout;5000000"
         "|max_delay;500000"
@@ -202,6 +204,18 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 logger = logging.getLogger(__name__)
+
+if _OPENCV_FFMPEG_OPTIONS_CUSTOM:
+    logger.info(
+        "OpenCV RTSP: 已设置 OPENCV_FFMPEG_CAPTURE_OPTIONS（自定义），"
+        "实际 rtsp_transport 以 options 为准（未走 AI_RTSP_TRANSPORT 默认拼接）"
+    )
+else:
+    logger.info(
+        "OpenCV RTSP: rtsp_transport=%s（由 AI_RTSP_TRANSPORT / OPENCV_FFMPEG_RTSP_TRANSPORT / "
+        "FFMPEG_RTSP_TRANSPORT 决定；局域网极低延迟可试 udp）",
+        _EFFECTIVE_RTSP_TRANSPORT,
+    )
 
 # 全局变量
 TASK_ID = int(os.getenv('TASK_ID', '0'))

@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Iterable, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 from urllib.parse import urlparse
 
 import requests
@@ -63,9 +63,9 @@ def _body_suggests_hevc_rtmp(body: dict) -> bool:
     return False
 
 
-def _stream_url_candidates(body: dict) -> list:
+def _gb28181_play_candidates(body: dict) -> Tuple[List[Optional[str]], Dict[str, Any]]:
     """
-    按协议顺序返回候选播放地址。
+    按协议顺序返回候选播放地址，并附带策略元数据（用于日志与排障）。
 
     默认 (GB28181_PLAY_PROTOCOL=rtmp_first) 将 RTMP 置于 RTSP 之前：
     ZLMediaKit 在「RTMP 协议无读者」时会触发 on_stream_none_reader；WVP/iot-gb28181
@@ -93,25 +93,21 @@ def _stream_url_candidates(body: dict) -> list:
         body.get('rtcs'),
     ]
     mode = (os.getenv('GB28181_PLAY_PROTOCOL') or 'rtmp_first').strip().lower()
-    if mode in ('rtsp_first', 'rtsp', 'legacy'):
-        return [
-            body.get('rtsp'),
-            body.get('rtsps'),
-            body.get('rtmp'),
-            body.get('rtmps'),
-            *flv_block,
-            *other,
-        ]
-    # 默认：rtmp_first；若接口标明 HEVC 的 RTMP，则对 OpenCV 侧优先 RTSP
     hevc_rtsp_first = (os.getenv('GB28181_HEVC_RTSP_FIRST', '1').strip().lower() not in (
         '0', 'false', 'no', 'off',
     ))
-    if hevc_rtsp_first and _body_suggests_hevc_rtmp(body if isinstance(body, dict) else {}):
-        _logger.info(
-            'GB28181: 检测到 HEVC/H.265 的 RTMP 播放地址，已优先选用 RTSP（缓解 OpenCV RTMP codec_id=0）；'
-            '若需强制 RTMP 优先请设 GB28181_HEVC_RTSP_FIRST=0'
-        )
-        return [
+    hevc_hint = _body_suggests_hevc_rtmp(body if isinstance(body, dict) else {})
+
+    meta: Dict[str, Any] = {
+        'play_protocol': mode,
+        'hevc_rtsp_first_env_on': hevc_rtsp_first,
+        'hevc_hint': hevc_hint,
+        'branch': 'rtmp_first',
+    }
+
+    if mode in ('rtsp_first', 'rtsp', 'legacy'):
+        meta['branch'] = 'rtsp_first'
+        candidates = [
             body.get('rtsp'),
             body.get('rtsps'),
             body.get('rtmp'),
@@ -119,7 +115,22 @@ def _stream_url_candidates(body: dict) -> list:
             *flv_block,
             *other,
         ]
-    return [
+        return candidates, meta
+
+    if hevc_rtsp_first and hevc_hint:
+        meta['branch'] = 'hevc_rtsp_first'
+        candidates = [
+            body.get('rtsp'),
+            body.get('rtsps'),
+            body.get('rtmp'),
+            body.get('rtmps'),
+            *flv_block,
+            *other,
+        ]
+        return candidates, meta
+
+    meta['branch'] = 'rtmp_first'
+    candidates = [
         body.get('rtmp'),
         body.get('rtmps'),
         body.get('rtsp'),
@@ -127,12 +138,43 @@ def _stream_url_candidates(body: dict) -> list:
         *flv_block,
         *other,
     ]
+    return candidates, meta
+
+
+def _format_gb28181_choice_log(chosen_url: str, meta: Dict[str, Any]) -> str:
+    """单行说明：最终选用协议与选路原因（便于对照 ZLM / OpenCV 灰屏问题）。"""
+    scheme = urlparse(chosen_url).scheme.lower() if chosen_url else ''
+    branch = meta.get('branch', '')
+    branch_tip = {
+        'rtsp_first': '接口顺序优先RTSP',
+        'rtmp_first': '接口顺序优先RTMP(占读者保活)',
+        'hevc_rtsp_first': 'HEVC+RTMP线索则优先RTSP(OpenCV兼容)',
+    }.get(branch, branch)
+    hevc_on = '开启' if meta.get('hevc_rtsp_first_env_on') else '关闭'
+    hint = '是' if meta.get('hevc_hint') else '否'
+    zlm_tip = ''
+    if branch == 'hevc_rtsp_first':
+        zlm_tip = '；若仅RTSP读者导致ZLM断流可调大streamNoneReaderDelayMS或子码流改H.264'
+    elif branch == 'rtsp_first':
+        zlm_tip = '；若RTMP长期无读者可能被ZLM回收，可调streamNoneReaderDelayMS或改用rtmp_first'
+    return (
+        f'选用={scheme or "?"} | {branch_tip} | PLAY_PROTOCOL={meta.get("play_protocol")} | '
+        f'HEVC线索={hint} | HEVC_RTSP_FIRST={hevc_on}{zlm_tip}'
+    )
+
+
+def _extract_stream_url_and_meta(payload: dict) -> Tuple[Optional[str], Dict[str, Any]]:
+    body = payload.get('data') if isinstance(payload.get('data'), dict) else payload
+    if not isinstance(body, dict):
+        return None, {}
+    candidates, meta = _gb28181_play_candidates(body)
+    chosen = next((url for url in candidates if isinstance(url, str) and url.strip()), None)
+    return chosen, meta
 
 
 def _extract_stream_url(payload: dict) -> Optional[str]:
-    body = payload.get('data') if isinstance(payload.get('data'), dict) else payload
-    candidates = _stream_url_candidates(body if isinstance(body, dict) else {})
-    return next((url for url in candidates if isinstance(url, str) and url.strip()), None)
+    url, _ = _extract_stream_url_and_meta(payload)
+    return url
 
 
 def resolve_gb28181_source(
@@ -158,12 +200,13 @@ def resolve_gb28181_source(
             response = requests.get(play_url, headers=headers, timeout=timeout)
             response.raise_for_status()
             payload = response.json()
-            stream_url = _extract_stream_url(payload if isinstance(payload, dict) else {})
+            stream_url, meta = _extract_stream_url_and_meta(payload if isinstance(payload, dict) else {})
             if stream_url:
-                if logger:
-                    logger.info(
-                        f'GB28181源解析成功: {device_id}/{channel_id} -> {stream_url} (via {base_url})'
-                    )
+                detail = _format_gb28181_choice_log(stream_url, meta)
+                log_fn = logger.info if logger else _logger.info
+                log_fn(
+                    f'GB28181源解析成功: {device_id}/{channel_id} -> {stream_url} | {detail} (via {base_url})'
+                )
                 return stream_url
             errors.append(f'{base_url}: 未返回可播放流地址')
         except Exception as exc:

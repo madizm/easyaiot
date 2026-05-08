@@ -207,18 +207,20 @@ load_dotenv()
 # OpenCV FFmpeg 解码参数（用于降低延迟并尽量忽略/丢弃损坏包）
 # 说明：当上游流发生抖动/重连/丢包时，FFmpeg 解码常出现 "error while decoding MB..."；
 # 该配置倾向于“丢弃损坏数据继续跑”，避免花屏/撕裂持续时间过长。
-# RTSP 传输：优先 AI_RTSP_TRANSPORT，其次 OPENCV_/FFMPEG_；默认 udp（与常见摄像头/海康子码流习惯一致；若灰屏/花屏多可设 AI_RTSP_TRANSPORT=tcp）
-if not os.getenv("OPENCV_FFMPEG_CAPTURE_OPTIONS"):
-    _rtsp_tr = (
-        os.getenv("AI_RTSP_TRANSPORT")
-        or os.getenv("OPENCV_FFMPEG_RTSP_TRANSPORT")
-        or os.getenv("FFMPEG_RTSP_TRANSPORT")
-        or "udp"
-    ).strip().lower()
-    if _rtsp_tr not in ("tcp", "udp"):
-        _rtsp_tr = "udp"
+# RTSP 传输：优先 AI_RTSP_TRANSPORT，其次 OPENCV_/FFMPEG_；默认 tcp（抗丢包、Docker/跨主机更稳；局域网要低延迟可设 AI_RTSP_TRANSPORT=udp）
+_EFFECTIVE_RTSP_TRANSPORT = (
+    os.getenv("AI_RTSP_TRANSPORT")
+    or os.getenv("OPENCV_FFMPEG_RTSP_TRANSPORT")
+    or os.getenv("FFMPEG_RTSP_TRANSPORT")
+    or "tcp"
+).strip().lower()
+if _EFFECTIVE_RTSP_TRANSPORT not in ("tcp", "udp"):
+    _EFFECTIVE_RTSP_TRANSPORT = "tcp"
+
+_OPENCV_FFMPEG_OPTIONS_CUSTOM = bool(os.getenv("OPENCV_FFMPEG_CAPTURE_OPTIONS"))
+if not _OPENCV_FFMPEG_OPTIONS_CUSTOM:
     os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = (
-        f"rtsp_transport;{_rtsp_tr}"
+        f"rtsp_transport;{_EFFECTIVE_RTSP_TRANSPORT}"
         "|stimeout;10000000"
         "|rw_timeout;5000000"
         "|max_delay;500000"
@@ -234,6 +236,18 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 logger = logging.getLogger(__name__)
+
+if _OPENCV_FFMPEG_OPTIONS_CUSTOM:
+    logger.info(
+        "OpenCV RTSP: 已设置 OPENCV_FFMPEG_CAPTURE_OPTIONS（自定义），"
+        "实际 rtsp_transport 以 options 为准（未走 AI_RTSP_TRANSPORT 默认拼接）"
+    )
+else:
+    logger.info(
+        "OpenCV RTSP: rtsp_transport=%s（由 AI_RTSP_TRANSPORT / OPENCV_FFMPEG_RTSP_TRANSPORT / "
+        "FFMPEG_RTSP_TRANSPORT 决定；局域网极低延迟可试 udp）",
+        _EFFECTIVE_RTSP_TRANSPORT,
+    )
 
 # 时区设置（使用Asia/Shanghai，与Java端保持一致）
 BEIJING_TZ = pytz.timezone('Asia/Shanghai')
@@ -2358,7 +2372,8 @@ def buffer_streamer_worker(device_id: str):
             elif frame_width is not None and (stdin_w != frame_width or stdin_h != frame_height):
                 # 源流分辨率变化：必须清空缓冲区，否则旧分辨率帧写入新 FFmpeg -s 会导致灰屏
                 logger.info(
-                    f"🔄 设备 {device_id} 源流分辨率变化 ({frame_width}x{frame_height} -> {stdin_w}x{stdin_h})，重启推送进程并清空缓冲"
+                    f"🔄 设备 {device_id} 源流分辨率变化 ({frame_width}x{frame_height} -> {stdin_w}x{stdin_h})，"
+                    f"重启推送进程并清空缓冲（避免 rawvideo 与 -s 不一致导致推流灰屏）"
                 )
                 if pusher_process and pusher_process.poll() is None:
                     try:
