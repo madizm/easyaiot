@@ -4,6 +4,7 @@
 # SRS 容器重启脚本
 # ============================================
 # 重启 docker-compose 中的 SRS 服务（容器名：srs-server），用于配置变更或异常恢复后快速拉起。
+# 与 compose 约定一致：宿主机 /data 挂载为容器内 /data（录像与 srs.log）；重启前会尝试创建 /data/playbacks。
 # 使用方法（在 .scripts/docker 目录下）：
 #   ./fix_srs.sh
 # ============================================
@@ -42,8 +43,22 @@ get_compose_cmd() {
     fi
 }
 
+# 与 install_middleware_linux.sh 约定一致：宿主机根目录 /data，避免 bind 后目录缺失或权限异常
+ensure_srs_host_data_dir() {
+    if [ "$EUID" -eq 0 ]; then
+        mkdir -p /data/playbacks 2>/dev/null || true
+        chmod -R 777 /data 2>/dev/null || true
+    elif command -v sudo &>/dev/null; then
+        sudo mkdir -p /data/playbacks 2>/dev/null || true
+        sudo chmod -R 777 /data 2>/dev/null || true
+    else
+        mkdir -p /data/playbacks 2>/dev/null || true
+    fi
+}
+
 restart_srs() {
     check_docker
+    ensure_srs_host_data_dir
 
     if docker inspect "$CONTAINER_NAME" &>/dev/null; then
         print_info "重启容器 ${CONTAINER_NAME} ..."

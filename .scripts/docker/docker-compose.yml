@@ -316,8 +316,8 @@ services:
     volumes:
       - "./srs_data/conf:/usr/local/srs/conf:rw"
       - "./srs_data/conf:/opt/srs/trunk/conf:rw"
-      # 使用用户目录，避免 macOS 绑定挂载 /data 时 Docker Desktop 报 mounts denied（/data 非默认共享且根卷只读）
-      - "${HOME}/srs_data:/data:rw"
+      # 宿主机根目录 /data 映射为容器内录像与日志目录（安装脚本会在启动前创建 /data）
+      - "/data:/data:rw"
     command: ["./objs/srs", "-c", "conf/docker.conf"]
     working_dir: /usr/local/srs
     healthcheck:

@@ -125,8 +125,14 @@ ensure_dirs() {
     "minio_data" "srs_data" "nodered_data"
   )
   for d in "${dirs[@]}"; do mkdir -p "${SCRIPT_DIR}/${d}"; done
-  # SRS 容器绑定 ${HOME}/srs_data -> /data（见 docker-compose.yml），须存在且位于 Docker Desktop 默认可共享路径下
-  mkdir -p "${HOME}/srs_data"
+  # SRS 容器绑定宿主机 /data -> 容器 /data（见 docker-compose.yml）；若失败请 sudo mkdir -p /data/playbacks，并在 Docker Desktop 中将 /data 加入 File Sharing
+  if mkdir -p /data/playbacks 2>/dev/null; then
+    chmod -R 777 /data 2>/dev/null || true
+  elif command -v sudo &>/dev/null && sudo mkdir -p /data/playbacks 2>/dev/null; then
+    sudo chmod -R 777 /data 2>/dev/null || true
+  else
+    warn "无法创建 /data，请执行: sudo mkdir -p /data/playbacks && sudo chmod -R 777 /data（Docker Desktop 需共享 /data）"
+  fi
 }
 
 ensure_env() {

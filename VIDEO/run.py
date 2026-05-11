@@ -404,6 +404,29 @@ def create_app():
                             except:
                                 pass
                     
+                    # MinIO 告警图 URL、任务关联字段（与 models.Alert 一致；旧库缺列会导致列表/统计查询失败）
+                    for col_name, col_def in [
+                        ('image_url', 'VARCHAR(500)'),
+                        ('task_id', 'INTEGER'),
+                        ('task_name', 'VARCHAR(255)'),
+                    ]:
+                        result = db.session.execute(text(f"""
+                            SELECT EXISTS (
+                                SELECT FROM information_schema.columns
+                                WHERE table_schema = 'public'
+                                AND table_name = 'alert'
+                                AND column_name = '{col_name}'
+                            );
+                        """))
+                        if not result.scalar():
+                            print(f"⚠️  alert.{col_name} 列不存在，正在添加...")
+                            db.session.execute(text(f"""
+                                ALTER TABLE alert
+                                ADD COLUMN {col_name} {col_def} NULL;
+                            """))
+                            db.session.commit()
+                            print(f"✅ alert.{col_name} 列添加成功")
+                    
                     print("✅ alert 表迁移检查完成")
                 except Exception as e:
                     print(f"⚠️  alert 表迁移检查失败: {str(e)}")
