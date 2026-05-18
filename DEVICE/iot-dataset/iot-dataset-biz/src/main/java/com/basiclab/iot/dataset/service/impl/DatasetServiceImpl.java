@@ -52,6 +52,9 @@ public class DatasetServiceImpl implements DatasetService {
         // 插入
         DatasetDO dataset = BeanUtils.toBean(createReqVO, DatasetDO.class);
         dataset.setDatasetCode(UUIDUtil.getUUID16());
+        if (dataset.getVersion() == null || dataset.getVersion().isBlank()) {
+            dataset.setVersion("v1.0.0");
+        }
         dataset.setAudit(DatasetAudit.PENDING_APPROVAL.getKey());
         datasetMapper.insert(dataset);
         // 返回
@@ -61,9 +64,15 @@ public class DatasetServiceImpl implements DatasetService {
     @Override
     public void updateDataset(DatasetSaveReqVO updateReqVO) {
         // 校验存在
-        validateExists(updateReqVO.getId());
+        DatasetDO existing = datasetMapper.selectById(updateReqVO.getId());
+        if (existing == null) {
+            throw exception(DATASET_NOT_EXISTS);
+        }
         // 更新
         DatasetDO updateObj = BeanUtils.toBean(updateReqVO, DatasetDO.class);
+        if (updateObj.getVersion() == null || updateObj.getVersion().isBlank()) {
+            updateObj.setVersion(existing.getVersion() != null ? existing.getVersion() : "v1.0.0");
+        }
         datasetMapper.updateById(updateObj);
     }
 

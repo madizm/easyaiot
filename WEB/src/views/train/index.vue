@@ -10,6 +10,9 @@
         <TabPane key="1" tab="模型管理">
           <ModelList></ModelList>
         </TabPane>
+        <TabPane key="6" tab="模型训练">
+          <TrainTaskList></TrainTaskList>
+        </TabPane>
         <TabPane key="2" tab="模型推理">
           <AiModelTool :initialLLMId="initialLLMId"></AiModelTool>
         </TabPane>
@@ -32,6 +35,7 @@ import {reactive, onMounted, ref, computed} from 'vue';
 import {useRoute} from 'vue-router';
 import { TabPane, Tabs } from "ant-design-vue";
 import ModelList from "@/views/train/components/ModelList/index.vue";
+import TrainTaskList from "@/views/train/components/TrainTaskList/index.vue";
 import AiModelTool from "@/views/train/components/AiModelTool/index.vue";
 import ModelExport from "@/views/train/components/ModelExport/index.vue";
 import DeployService from "@/views/train/components/DeployService/index.vue";

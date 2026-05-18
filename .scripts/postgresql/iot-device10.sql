@@ -2,10 +2,10 @@
 -- PostgreSQL database dump
 --
 
-\restrict Fxw8kG3gVEObSjt53dfInfuAPpla7dLlSt2hdg1IzOtgl3fYIegIsi0S4hwmPKX
+\restrict Kcv88sJhkGiWOQvbbShp5YfCPBdF1fRFViNtezKe1gPIcCtiYcA21167GQ42ks1
 
--- Dumped from database version 18.1 (Debian 18.1-1.pgdg13+2)
--- Dumped by pg_dump version 18.1 (Debian 18.1-1.pgdg13+2)
+-- Dumped from database version 18.3 (Debian 18.3-1.pgdg13+1)
+-- Dumped by pg_dump version 18.3 (Debian 18.3-1.pgdg13+1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -27,10 +27,10 @@ DROP DATABASE IF EXISTS "iot-device20";
 CREATE DATABASE "iot-device20" WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROVIDER = libc LOCALE = 'en_US.utf8';
 
 
-\unrestrict Fxw8kG3gVEObSjt53dfInfuAPpla7dLlSt2hdg1IzOtgl3fYIegIsi0S4hwmPKX
+\unrestrict Kcv88sJhkGiWOQvbbShp5YfCPBdF1fRFViNtezKe1gPIcCtiYcA21167GQ42ks1
 \encoding SQL_ASCII
 \connect -reuse-previous=on "dbname='iot-device20'"
-\restrict Fxw8kG3gVEObSjt53dfInfuAPpla7dLlSt2hdg1IzOtgl3fYIegIsi0S4hwmPKX
+\restrict Kcv88sJhkGiWOQvbbShp5YfCPBdF1fRFViNtezKe1gPIcCtiYcA21167GQ42ks1
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -323,7 +323,8 @@ CREATE TABLE public.dataset (
     is_allocated smallint DEFAULT 0 NOT NULL,
     model_service_id bigint,
     is_sync_minio smallint DEFAULT 0 NOT NULL,
-    zip_url character varying(500)
+    zip_url character varying(500),
+    version character varying(100)
 );
 
 
@@ -5310,8 +5311,8 @@ COPY public.app (id, app_id, app_key, app_secret, app_name, app_desc, status, pe
 -- Data for Name: dataset; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY public.dataset (id, dataset_code, name, cover_path, description, dataset_type, audit, reason, create_by, create_time, tenant_id, update_by, update_time, deleted, is_allocated, model_service_id, is_sync_minio, zip_url) FROM stdin;
-3	2h2UCKt2	人	/api/v1/buckets/snap-space/objects/download?prefix=person.jpg	标注人的数据集	0	0	\N	admin	2025-06-18 20:43:11.303	0	1	2025-08-26 04:00:10.296677	0	0	\N	0	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip
+COPY public.dataset (id, dataset_code, name, cover_path, description, dataset_type, audit, reason, create_by, create_time, tenant_id, update_by, update_time, deleted, is_allocated, model_service_id, is_sync_minio, zip_url, version) FROM stdin;
+3	2h2UCKt2	人	/api/v1/buckets/snap-space/objects/download?prefix=person.jpg	标注人的数据集	0	0	\N	admin	2025-06-18 20:43:11.303	0	1	2025-08-26 04:00:10.296677	0	0	\N	0	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	v1.0.0
 \.
 
 
@@ -6629,5 +6630,5 @@ CREATE TRIGGER update_iot_app_updated_time BEFORE UPDATE ON public.app FOR EACH 
 -- PostgreSQL database dump complete
 --
 
-\unrestrict Fxw8kG3gVEObSjt53dfInfuAPpla7dLlSt2hdg1IzOtgl3fYIegIsi0S4hwmPKX
+\unrestrict Kcv88sJhkGiWOQvbbShp5YfCPBdF1fRFViNtezKe1gPIcCtiYcA21167GQ42ks1
 

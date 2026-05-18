@@ -303,9 +303,13 @@ def create_app():
                 AutoLabelTask,
                 AutoLabelResult,
                 ensure_model_table_status_column,
+                ensure_train_task_name_column,
+                ensure_train_task_dataset_columns,
             )
             db.create_all()
             ensure_model_table_status_column(db.engine)
+            ensure_train_task_name_column(db.engine)
+            ensure_train_task_dataset_columns(db.engine)
             print(f"✅ 数据库连接成功，表结构已创建/验证")
         except Exception as e:
             error_msg = str(e)
@@ -324,7 +328,7 @@ def create_app():
         app.register_blueprint(export.export_bp, url_prefix='/model/export')
         app.register_blueprint(inference.inference_task_bp, url_prefix='/model/inference_task')
         app.register_blueprint(model.model_bp, url_prefix='/model')
-        app.register_blueprint(train.train_bp, url_prefix='/model/train')
+        app.register_blueprint(train.train_bp, url_prefix='/model/train_task')
         app.register_blueprint(train_task.train_task_bp, url_prefix='/model/train_task')
         app.register_blueprint(llm.llm_bp, url_prefix='/model/llm')
         app.register_blueprint(ocr.ocr_bp, url_prefix='/model/ocr')

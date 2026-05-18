@@ -2777,7 +2777,7 @@ def cloud_list_datasets():
                 if did is None:
                     continue
                 name = (row.get('name') or '').strip() or f'dataset_{did}'
-                version = (row.get('datasetCode') or '').strip()
+                version = (row.get('version') or row.get('datasetCode') or '').strip()
                 label = f'{name} (ID:{did})'
                 if version:
                     label = f'{name} [{version}] (ID:{did})'

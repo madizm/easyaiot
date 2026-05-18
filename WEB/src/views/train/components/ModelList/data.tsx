@@ -61,7 +61,6 @@ export function getFormConfig(): Partial<FormProps> {
           options: [
             {label: '未部署', value: 0},
             {label: '已部署', value: 1},
-            {label: '训练中', value: 2},
             {label: '已下线', value: 3},
           ],
         },

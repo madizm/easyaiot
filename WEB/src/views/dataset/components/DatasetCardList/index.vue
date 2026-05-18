@@ -48,9 +48,9 @@
                       {{ item.audit == 0 ? "待审核" : item.audit == 1 ? "审核通过" : "审核驳回" }}
                     </Tag>
 
-                    <!-- 描述标签 - 使用中性色 -->
-                    <Tag v-if="item.description" color="#8c8c8c" style="max-width: 160px; overflow: hidden; text-overflow: ellipsis;">
-                      {{ item.description }}
+                    <!-- 版本号标签 -->
+                    <Tag v-if="item.version" color="#722ed1">
+                      {{ item.version }}
                     </Tag>
                   </div>
                   <!-- 新增标注进度条 -->

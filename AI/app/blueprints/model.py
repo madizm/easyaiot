@@ -16,7 +16,6 @@ from flask import redirect, url_for, flash, render_template
 from app.services.minio_service import ModelService
 from app.utils.yolo_validator import validate_yolo_model
 from app.utils.image_utils import download_default_model_image
-from db_models import TrainTask
 from db_models import db, Model, InferenceTask
 from sqlalchemy.exc import IntegrityError
 
@@ -78,91 +77,6 @@ def models():
         return jsonify({'code': 400, 'msg': '参数类型错误：pageNo和pageSize需为整数'}), 400
     except Exception as e:
         logger.error(f'分页查询失败: {str(e)}')
-        return jsonify({'code': 500, 'msg': '服务器内部错误'}), 500
-
-
-@model_bp.route('/<int:model_id>/publish', methods=['POST'])
-def publish_model(model_id):
-    try:
-        data = request.get_json()
-        train_task_id = data.get('train_task_id')
-        version = data.get('version', '1.0.0')
-
-        if not train_task_id:
-            return jsonify({'code': 400, 'msg': '缺少训练记录ID参数'}), 400
-
-        model = Model.query.get_or_404(model_id)
-        train_task = TrainTask.query.get_or_404(train_task_id)
-
-        if train_task.model_id != model_id:
-            return jsonify({'code': 400, 'msg': '训练记录不属于该模型'}), 400
-
-        model_path = train_task.minio_model_path or train_task.best_model_path
-        if not model_path:
-            return jsonify({'code': 400, 'msg': '训练记录中未找到有效模型路径'}), 400
-
-        # 检查模型名称+版本是否已存在（排除自身）
-        existing_model = Model.query.filter(
-            db.func.lower(Model.name) == db.func.lower(model.name),
-            Model.version == version,
-            Model.id != model_id
-        ).first()
-
-        if existing_model:
-            return jsonify({
-                'code': 400,
-                'msg': f'模型"{model.name}"版本"{version}"已存在，请使用其他版本号'
-            }), 400
-
-        model.model_path = model_path
-        model.train_task_id = train_task_id
-        model.version = version
-        db.session.commit()
-
-        logger.info(f"模型 {model_id} 版本 {version} 已发布")
-        return jsonify({
-            'code': 0,
-            'msg': '模型发布成功',
-            'data': {
-                'model_id': model_id,
-                'version': version,
-                'model_path': model_path
-            }
-        })
-
-    except Exception as e:
-        logger.error(f"发布模型失败: {str(e)}")
-        db.session.rollback()
-        return jsonify({'code': 500, 'msg': f'服务器内部错误: {str(e)}'}), 500
-
-
-@model_bp.route('/<int:model_id>/train_tasks', methods=['GET'])
-def get_model_train_tasks(model_id):
-    try:
-        page_no = int(request.args.get('pageNo', 1))
-        page_size = int(request.args.get('pageSize', 10))
-
-        query = TrainTask.query.filter_by(model_id=model_id)
-        pagination = query.paginate(page=page_no, per_page=page_size, error_out=False)
-
-        records = [{
-            'id': record.id,
-            'start_time': record.start_time.isoformat(),
-            'end_time': record.end_time.isoformat() if record.end_time else None,
-            'status': record.status,
-            'minio_model_path': record.minio_model_path,
-            'best_model_path': record.best_model_path
-        } for record in pagination.items]
-
-        return jsonify({
-            'code': 0,
-            'msg': 'success',
-            'data': records,
-            'total': pagination.total
-        })
-
-    except Exception as e:
-        logger.error(f"获取训练记录失败: {str(e)}")
         return jsonify({'code': 500, 'msg': '服务器内部错误'}), 500
 
 
@@ -648,14 +562,6 @@ def delete_model(model_id):
                 db.session.delete(task)
             logger.info(f"已自动删除 {inference_tasks_count} 个关联的推理任务")
 
-        # 检查是否有相关的训练任务记录
-        train_tasks_count = TrainTask.query.filter_by(model_id=model_id).count()
-        if train_tasks_count > 0:
-            return jsonify({
-                'code': 400,
-                'msg': f'无法删除模型"{model_name}"，该模型正在被{train_tasks_count}个训练任务使用。请先删除相关的训练任务后再试。'
-            }), 400
-
         # 删除本地数据集目录（如果存在）
         model_path = os.path.join('data/datasets', str(model_id))
         if os.path.exists(model_path):
@@ -791,17 +697,6 @@ def download_model(model_id):
         
         # 优先使用 model_path，如果没有则使用 onnx_model_path
         model_path = model.model_path or model.onnx_model_path
-        
-        # 如果模型表中没有路径，尝试从TrainTask中获取最新的已完成训练的模型路径
-        if not model_path:
-            train_task = TrainTask.query.filter_by(
-                model_id=model_id,
-                status='completed'
-            ).order_by(TrainTask.end_time.desc()).first()
-            
-            if train_task and train_task.minio_model_path:
-                model_path = train_task.minio_model_path
-                logger.info(f"从训练任务中获取模型路径: {model_path}")
         
         if not model_path:
             return jsonify({

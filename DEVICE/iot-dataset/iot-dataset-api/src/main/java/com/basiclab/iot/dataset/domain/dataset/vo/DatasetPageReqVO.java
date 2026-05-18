@@ -23,6 +23,9 @@ public class DatasetPageReqVO extends PageParam {
     @Schema(description = "数据集名称", example = "张三")
     private String name;
 
+    @Schema(description = "数据集版本号", example = "v1.0.0")
+    private String version;
+
     @Schema(description = "封面地址")
     private String coverPath;
 

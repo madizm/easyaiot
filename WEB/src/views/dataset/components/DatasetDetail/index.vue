@@ -14,6 +14,8 @@
             </div>
             <div class="item"><span>数据集编码：</span><span>{{ description.datasetCode }}</span>
             </div>
+            <div class="item"><span>版本号：</span><span>{{ description.version || '—' }}</span>
+            </div>
             <div class="item"><span>数据集分类：</span><span>{{
                 description.datasetType == 0 ? '图片' : '文本'
               }}</span>
@@ -53,6 +55,7 @@ const description = reactive({
   id: '',
   datasetCode: '',
   name: '',
+  version: '',
   datasetType: '',
   audit: '',
 });

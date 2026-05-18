@@ -27,6 +27,10 @@ public class DatasetSaveReqVO {
     @NotEmpty(message = "数据集名称不能为空")
     private String name;
 
+    @Schema(description = "数据集版本号", example = "v1.0.0")
+    @NotEmpty(message = "数据集版本号不能为空")
+    private String version;
+
     @Schema(description = "封面地址")
     private String coverPath;
 

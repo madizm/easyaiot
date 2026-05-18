@@ -17,7 +17,7 @@
                   title: '详情',
                   placement: 'top',
                 },
-                onClick: goTrainDetail.bind(record),
+                onClick: handleView.bind(null, record),
               },
               {
                 tooltip: {
@@ -60,7 +60,6 @@
         @delete="handleDel"
         @view="handleView"
         @edit="handleEdit"
-        @train="handleTrain"
         @download="handleDownload"
       >
       <template #header>
@@ -84,15 +83,12 @@ import { useMessage } from '@/hooks/web/useMessage';
 import { getBasicColumns, getFormConfig } from "./data";
 import ModelModal from "../ModelModal/index.vue";
 import { useModal } from "@/components/Modal";
-import { useRouter } from "vue-router";
 import { deleteModel, getModelPage, downloadModel } from "@/api/device/model";
 import ModelCardList from "../ModelCardList/index.vue";
 
 const { createMessage, createConfirm } = useMessage();
 
 const [registerAddModel, { openModal: openAddModal }] = useModal();
-const router = useRouter();
-
 defineOptions({ name: 'ModelList' })
 
 const state = reactive({
@@ -107,7 +103,7 @@ function getMethod(m: any) {
 }
 
 function handleView(record) {
-  goTrainDetail(record);
+  openAddModal(true, { isEdit: false, isView: true, record });
 }
 
 function handleEdit(record) {
@@ -128,21 +124,6 @@ function handleSuccess() {
   cardListReload();
 }
 
-// 新增训练处理函数
-const handleTrain = async (record) => {
-  try {
-    // 使用Vue Router跳转到训练页面
-    router.push({
-      name: 'ModelTrain',
-      params: { modelId: record.id },
-      query: { modelName: record.name }
-    });
-  } catch (error) {
-    console.error('跳转到训练页面失败:', error);
-    createMessage.error('跳转到训练页面失败');
-  }
-};
-
 const [registerTable, { reload }] = useTable({
   canResize: true,
   showIndexColumn: false,
@@ -159,10 +140,6 @@ const [registerTable, { reload }] = useTable({
   },
   rowKey: 'id',
 });
-
-const goTrainDetail = async (record) => {
-  router.push({ name: 'TrainTaskDetail', params: { modelId: record.id } });
-};
 
 const handleDelete = async (record) => {
   try {

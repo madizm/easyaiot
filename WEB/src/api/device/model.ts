@@ -2,8 +2,6 @@ import {defHttp} from '@/utils/http/axios';
 
 enum Api {
   Model = '/model',
-  Train = '/model/train',
-  TrainTask = '/model/train_task',
   InferenceTask = '/model/inference_task',
   Export = '/model/export',
   DeployService = '/model/deploy_service',
@@ -73,40 +71,6 @@ export const uploadModelFile = (formData: FormData) => {
       'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token')
     }
   });
-};
-
-// ================= 模型训练任务接口 =================
-export const getTrainTaskPage = (params) => {
-  return commonApi('get', `${Api.TrainTask}/list`, {params});
-};
-
-export const getTrainTaskDetail = (recordId) => {
-  return commonApi('get', `${Api.TrainTask}/${recordId}`);
-};
-
-export const publishTrainTask = (recordId: number) => {
-  return commonApi('post', `${Api.TrainTask}/publish/${recordId}`);
-};
-
-export const deleteTrainTask = (recordId: number) => {
-  return commonApi('delete', `${Api.TrainTask}/delete/${recordId}`);
-};
-
-// ================= 模型训练接口 =================
-export const startTrain = (modelId, config) => {
-  return commonApi('post', `${Api.Train}/${modelId}/train`, {data: config});
-};
-
-export const stopTrain = (modelId) => {
-  return commonApi('post', `${Api.Train}/${modelId}/train/stop`);
-};
-
-export const getTrainStatus = (modelId) => {
-  return commonApi('get', `${Api.Train}/${modelId}/train/status`);
-};
-
-export const getTrainLogs = (modelId, taskId) => {
-  return commonApi('get', `${Api.Train}/${modelId}/train/${taskId}/logs`);
 };
 
 // ================= 模型推理任务接口 =================

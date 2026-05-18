@@ -37,20 +37,16 @@ class Model(db.Model):
     tensorrt_model_path = db.Column(db.String(500))
     openvino_model_path = db.Column(db.String(500))
 
-    # 关系定义
-    train_tasks = db.relationship(
-        'TrainTask',
-        foreign_keys='TrainTask.model_id',
-        backref=db.backref('model_obj', lazy=True),  # 修改反向引用名称以避免冲突
-        lazy='dynamic'
-    )
     export_records = db.relationship('ExportRecord', back_populates='model', cascade='all, delete-orphan')
 
 class TrainTask(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    model_id = db.Column(db.Integer, db.ForeignKey('model.id'), nullable=True)
+    name = db.Column(db.String(100), nullable=True)
+    model_id = db.Column(db.Integer, nullable=True)  # 已废弃，保留列兼容历史数据
     progress = db.Column(db.Integer, default=0)
     dataset_path = db.Column(db.String(200), nullable=False)
+    dataset_name = db.Column(db.String(100), nullable=True)
+    dataset_version = db.Column(db.String(100), nullable=True)
     hyperparameters = db.Column(db.Text)
     start_time = db.Column(db.DateTime, default=datetime.utcnow)
     end_time = db.Column(db.DateTime, nullable=True)
@@ -496,6 +492,47 @@ class AutoLabelResult(db.Model):
     
     def __repr__(self):
         return f'<AutoLabelResult {self.id} ({self.status})>'
+
+
+def ensure_train_task_name_column(engine):
+    """老库 train_task 表无 name 列时补列。"""
+    import logging
+    from sqlalchemy import inspect, text
+
+    log = logging.getLogger(__name__)
+    try:
+        inspector = inspect(engine)
+        if 'train_task' not in inspector.get_table_names():
+            return
+        col_names = {c['name'] for c in inspector.get_columns('train_task')}
+        if 'name' not in col_names:
+            with engine.begin() as conn:
+                conn.execute(text('ALTER TABLE train_task ADD COLUMN name VARCHAR(100)'))
+            log.info('已为 train_task 表添加 name 列')
+    except Exception as e:
+        log.warning('ensure_train_task_name_column: %s', e)
+
+
+def ensure_train_task_dataset_columns(engine):
+    """老库 train_task 表无 dataset_name / dataset_version 列时补列。"""
+    import logging
+    from sqlalchemy import inspect, text
+
+    log = logging.getLogger(__name__)
+    try:
+        inspector = inspect(engine)
+        if 'train_task' not in inspector.get_table_names():
+            return
+        col_names = {c['name'] for c in inspector.get_columns('train_task')}
+        with engine.begin() as conn:
+            if 'dataset_name' not in col_names:
+                conn.execute(text('ALTER TABLE train_task ADD COLUMN dataset_name VARCHAR(100)'))
+                log.info('已为 train_task 表添加 dataset_name 列')
+            if 'dataset_version' not in col_names:
+                conn.execute(text('ALTER TABLE train_task ADD COLUMN dataset_version VARCHAR(100)'))
+                log.info('已为 train_task 表添加 dataset_version 列')
+    except Exception as e:
+        log.warning('ensure_train_task_dataset_columns: %s', e)
 
 
 def ensure_model_table_status_column(engine):

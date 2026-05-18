@@ -25,6 +25,9 @@
             <if test="reqVO.name != null and reqVO.name != ''">
                 AND d.name LIKE CONCAT('%', #{reqVO.name}, '%')
             </if>
+            <if test="reqVO.version != null and reqVO.version != ''">
+                AND d.version LIKE CONCAT('%', #{reqVO.version}, '%')
+            </if>
             <if test="reqVO.datasetType != null">
                 AND d.dataset_type = #{reqVO.datasetType}
             </if>

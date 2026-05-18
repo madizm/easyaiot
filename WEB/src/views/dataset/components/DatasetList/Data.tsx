@@ -14,6 +14,11 @@ export function getBasicColumns(): BasicColumn[] {
       width: 90,
     },
     {
+      title: '版本号',
+      dataIndex: 'version',
+      width: 80,
+    },
+    {
       title: '标注进度',
       dataIndex: 'annotationProgress',
       width: 90,
@@ -88,6 +93,11 @@ export function getFormConfig(): Partial<FormProps> {
       {
         field: `name`,
         label: `数据集名称`,
+        component: 'Input',
+      },
+      {
+        field: `version`,
+        label: `版本号`,
         component: 'Input',
       },
     ],

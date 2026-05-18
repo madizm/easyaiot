@@ -29,6 +29,10 @@ public class DatasetRespVO extends BaseEntity {
     @ExcelProperty("数据集名称")
     private String name;
 
+    @Schema(description = "数据集版本号", example = "v1.0.0")
+    @ExcelProperty("数据集版本号")
+    private String version;
+
     @Schema(description = "封面地址")
     @ExcelProperty("封面地址")
     private String coverPath;

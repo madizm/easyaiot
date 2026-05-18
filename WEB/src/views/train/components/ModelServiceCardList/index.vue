@@ -120,7 +120,7 @@ import {BasicForm, useForm} from '@/components/Form';
 import {propTypes} from '@/utils/propTypes';
 import {isFunction} from '@/utils/is';
 import {useMessage} from '@/hooks/web/useMessage';
-import {startTrain, stopTrain} from '@/api/device/model';
+import {startDeployService, stopDeployService} from '@/api/device/model';
 
 const ListItem = List.Item;
 const {createMessage} = useMessage();
@@ -227,10 +227,10 @@ const toggleServiceStatus = async (item) => {
   try {
     state.loading = true;
     if (item.status === 'running') {
-      await stopTrain(item.model_id);
+      await stopDeployService(item.id);
       createMessage.success('服务已停止');
     } else {
-      await startTrain(item.model_id); // 这里调用了 startTrain
+      await startDeployService(item.id);
       createMessage.success('服务已启动');
     }
     await fetch();

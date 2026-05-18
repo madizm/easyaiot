@@ -28,8 +28,11 @@
               allowClear
             />
           </FormItem>
+          <FormItem label="数据集版本" name="version" v-bind=validateInfos.version>
+            <Input v-model:value="modelRef.version" placeholder="例如 v1.0.0"/>
+          </FormItem>
           <FormItem label="数据集描述" name="description" v-bind=validateInfos.description>
-            <Input v-model:value="modelRef.description"/>
+            <Input v-model:value="modelRef.description" placeholder="选填"/>
           </FormItem>
           <FormItem label="数据集封面" name="coverPath" v-bind=validateInfos.coverPath>
             <Upload
@@ -91,6 +94,7 @@ const state = reactive({
 const modelRef = reactive({
   id: null,
   name: '',
+  version: 'v1.0.0',
   coverPath: '',
   description: '',
   datasetType: 0,
@@ -114,6 +118,9 @@ const [register, {closeModal}] = useModalInner((data) => {
   state.isView = isView;
   if (state.isEdit || state.isView) {
     datasetEdit(record);
+  } else {
+    resetFields();
+    modelRef.version = 'v1.0.0';
   }
 });
 
@@ -122,7 +129,8 @@ const emits = defineEmits(['success']);
 
 const rulesRef = reactive({
   name: [{required: true, message: '请输入数据集名称', trigger: ['change']}],
-  description: [{required: true, message: '请输入数据集描述', trigger: ['change']}],
+  version: [{required: true, message: '请输入数据集版本号', trigger: ['change']}],
+  description: [],
   datasetType: [{required: true, message: '请输入数据集类型', trigger: ['change']}],
   coverPath: [{required: true, message: '请输入封面地址', trigger: ['change']}],
 });
@@ -140,6 +148,9 @@ async function datasetEdit(record) {
     Object.keys(modelRef).forEach((item) => {
       modelRef[item] = record[item];
     });
+    if (!modelRef.version) {
+      modelRef.version = 'v1.0.0';
+    }
     state.editLoading = false;
     state.record = record;
   } catch (error) {

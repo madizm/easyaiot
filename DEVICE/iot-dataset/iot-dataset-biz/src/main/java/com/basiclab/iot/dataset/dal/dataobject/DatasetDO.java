@@ -37,6 +37,10 @@ public class DatasetDO extends BaseEntity {
      */
     private String name;
     /**
+     * 数据集版本号
+     */
+    private String version;
+    /**
      * 封面地址
      */
     private String coverPath;

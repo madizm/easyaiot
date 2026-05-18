@@ -33,11 +33,10 @@
 <script setup lang="ts">
 import {onMounted, onUnmounted, reactive, ref, watch, computed} from 'vue'
 import {BasicModal, useModalInner} from '@/components/Modal'
-import {getTrainLogs} from '@/api/device/model'
+import {getTrainLogs} from '@/api/device/train'
 
 const state = reactive({
   taskId: '',
-  modelId: '',
   taskName: '',
   pollingInterval: null as number | null
 });
@@ -48,8 +47,7 @@ const emit = defineEmits(['close', 'success']);
 const [registerModal, {closeModal}] = useModalInner((data) => {
   const {record} = data;
   state.taskId = record.id;
-  state.modelId = record.model_id;
-  state.taskName = record.model_name;
+  state.taskName = record.name || record.task_name || `训练任务 #${record.id}`;
   if (record.id) {
     startPolling();
   }
@@ -83,10 +81,9 @@ const formatTimestamp = (timestamp) => {
 // 加载日志数据
 const loadLogs = async () => {
   try {
-    if (!state.modelId) return
+    if (!state.taskId) return
 
-    // 使用新的训练状态接口
-    const data = await getTrainLogs(state.modelId, state.taskId)
+    const data = await getTrainLogs(Number(state.taskId))
 
     // 根据后端返回的数据结构调整
     if (data) {
@@ -142,8 +139,7 @@ watch(() => logs.value, () => {
   scrollToBottom()
 }, {deep: true})
 
-// 监听modelId变化
-watch(() => state.modelId, (newId) => {
+watch(() => state.taskId, (newId) => {
   if (newId) {
     stopPolling();
     startPolling();
@@ -152,7 +148,7 @@ watch(() => state.modelId, (newId) => {
 
 // 组件挂载时加载日志
 onMounted(() => {
-  if (state.modelId) {
+  if (state.taskId) {
     startPolling();
   }
 })

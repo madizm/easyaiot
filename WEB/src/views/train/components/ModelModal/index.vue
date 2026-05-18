@@ -111,7 +111,6 @@ const state = reactive({
   statusOptions: [
     { value: 0, label: '未部署' },
     { value: 1, label: '已部署' },
-    { value: 2, label: '训练中' },
     { value: 3, label: '已下线' },
   ],
 });
