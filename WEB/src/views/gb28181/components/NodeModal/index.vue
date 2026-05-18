@@ -224,35 +224,72 @@ function handleCancel() {
 }
 
 function test() {
-  checkMediaServer(modelRef).then((res)=>{
-    for (const key in res) {
-      modelRef[key] = res[key];
+  state.editLoading = true;
+  checkMediaServer(modelRef)
+    .then((res) => {
+      for (const key in res) {
+        modelRef[key] = res[key];
+      }
+      state.isTestAccess = true;
+      createMessage.success('流媒体节点测试通过');
+    })
+    .catch((err) => {
+      state.isTestAccess = false;
+      createMessage.error(err?.message || '流媒体节点测试失败');
+      console.error(err);
+    })
+    .finally(() => {
+      state.editLoading = false;
+    });
+}
+
+/** 保存前将端口类字段转为数字，避免 JSON 字符串导致后端解析异常 */
+function normalizeMediaServerPayload() {
+  const numericFields = [
+    'httpPort', 'httpSSlPort', 'rtmpPort', 'rtmpSSlPort', 'rtspPort', 'rtspSSLPort',
+    'flvPort', 'flvSSLPort', 'wsFlvPort', 'wsFlvSSLPort', 'rtpProxyPort', 'recordAssistPort',
+    'recordDay',
+  ] as const;
+  const payload: Record<string, any> = { ...modelRef };
+  for (const key of numericFields) {
+    const val = payload[key];
+    if (val !== '' && val != null) {
+      payload[key] = Number(val);
     }
-    state.isTestAccess = true;
-  });
+  }
+  payload.rtpPortRange = `${modelRef.rtpPortRange1},${modelRef.rtpPortRange2}`;
+  payload.sendRtpPortRange = payload.rtpPortRange;
+  return payload;
 }
 
 function handleOk() {
-  if (operateType == 'add' && !state.isTestAccess) {
-    createMessage.warn('必须先通过测试');
+  if (unref(operateType) === 'add' && !state.isTestAccess) {
+    createMessage.warn('必须先通过流媒体节点测试');
+    return;
   }
   validate().then(async () => {
-    let api = saveOrUpdateMediaServer;
-    modelRef.rtpPortRange = modelRef.rtpPortRange1 + ',' +modelRef.rtpPortRange2
-    modelRef.sendRtpPortRange = modelRef.rtpPortRange1 + ',' +modelRef.rtpPortRange2
+    if (unref(operateType) === 'add' && !modelRef.id) {
+      createMessage.error('缺少媒体节点 ID，请先完成流媒体节点测试');
+      return;
+    }
     state.editLoading = true;
-    api(modelRef)
+    saveOrUpdateMediaServer(normalizeMediaServerPayload())
       .then(() => {
         createMessage.success('操作成功');
+        state.isTestAccess = false;
         closeModal();
         resetFields();
         emits('success');
+      })
+      .catch((err) => {
+        createMessage.error(err?.message || '保存失败');
+        console.error(err);
       })
       .finally(() => {
         state.editLoading = false;
       });
   }).catch((err) => {
-    createMessage.error('操作失败');
+    createMessage.error('请完善表单信息');
     console.error(err);
   });
 }

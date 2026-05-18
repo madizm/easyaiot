@@ -217,11 +217,18 @@ export const getMediaServer = (id: string) => {
  */
 export const checkMediaServer = (params: {
   ip: string;
-  port: number;
+  port?: number | string;
+  httpPort?: number | string;
   secret: string;
   type?: string;
 }) => {
-  return commonApi('get', `${SERVER_PREFIX}/media_server/check`, params);
+  const port = params.port ?? params.httpPort;
+  return commonApi('get', `${SERVER_PREFIX}/media_server/check`, {
+    ip: params.ip,
+    port: Number(port),
+    secret: params.secret,
+    type: params.type ?? 'zlm',
+  });
 };
 
 /**

@@ -349,16 +349,23 @@ export const getMediaServer = (id: string) => {
 };
 
 /**
- * 测试媒体服务器
- * @param params 测试参数
+ * 测试媒体服务器（WVP 接口使用 query 参数 port，对应 ZLM 的 HTTP 端口）
+ * @param params 测试参数，支持 port 或 httpPort
  */
 export const checkMediaServer = (params: {
   ip: string;
-  port: number;
+  port?: number | string;
+  httpPort?: number | string;
   secret: string;
   type?: string;
 }) => {
-  return commonApi('get', `${SERVER_PREFIX}/media_server/check`, params);
+  const port = params.port ?? params.httpPort;
+  return commonApi('get', `${SERVER_PREFIX}/media_server/check`, {
+    ip: params.ip,
+    port: Number(port),
+    secret: params.secret,
+    type: params.type ?? 'zlm',
+  });
 };
 
 /**
