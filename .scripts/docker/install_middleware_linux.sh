@@ -78,6 +78,7 @@ MIDDLEWARE_SERVICES=(
     "FlinkTaskManager"
     "DorisFE"
     "DorisBE"
+    "GPUStack"
 )
 
 # 中间件端口映射
@@ -97,6 +98,7 @@ MIDDLEWARE_PORTS["FlinkJobManager"]="8081"
 MIDDLEWARE_PORTS["FlinkTaskManager"]=""
 MIDDLEWARE_PORTS["DorisFE"]="8030"
 MIDDLEWARE_PORTS["DorisBE"]="8040"
+MIDDLEWARE_PORTS["GPUStack"]="10180"
 
 # 中间件健康检查端点
 declare -A MIDDLEWARE_HEALTH_ENDPOINTS
@@ -115,6 +117,7 @@ MIDDLEWARE_HEALTH_ENDPOINTS["FlinkJobManager"]="/"
 MIDDLEWARE_HEALTH_ENDPOINTS["FlinkTaskManager"]=""
 MIDDLEWARE_HEALTH_ENDPOINTS["DorisFE"]="/api/bootstrap"
 MIDDLEWARE_HEALTH_ENDPOINTS["DorisBE"]="/api/health"
+MIDDLEWARE_HEALTH_ENDPOINTS["GPUStack"]="/"
 
 # 日志输出函数（去掉颜色代码后写入日志文件）
 log_to_file() {
@@ -1997,6 +2000,7 @@ create_all_storage_directories() {
         "${SCRIPT_DIR}/doris_data/fe_log:::"         # Doris FE 日志
         "${SCRIPT_DIR}/doris_data/be_storage:::"     # Doris BE 存储
         "${SCRIPT_DIR}/doris_data/be_log:::"         # Doris BE 日志
+        "${SCRIPT_DIR}/gpustack_data:::"             # GPUStack 数据（配置、内嵌库等）
     )
     
     local created_count=0
@@ -2088,6 +2092,7 @@ create_all_storage_directories() {
         "${SCRIPT_DIR}/nodered_data"
         "${SCRIPT_DIR}/flink_data"
         "${SCRIPT_DIR}/doris_data"
+        "${SCRIPT_DIR}/gpustack_data"
         "${SCRIPT_DIR}/../zlmediakit"
         "${SCRIPT_DIR}/logs"
     )
@@ -2478,6 +2483,19 @@ wait_for_zlmediakit() {
     
     print_error "ZLMediaKit 服务未就绪"
     return 1
+}
+
+# 配置 GPUStack 对外访问地址（供 Worker 节点注册）
+prepare_gpustack_env() {
+    local host_ip
+    host_ip=$(get_host_ip)
+    if [ -z "$host_ip" ]; then
+        print_warning "无法获取宿主机 IP，GPUStack Worker 注册将使用 host.docker.internal:10180"
+        export GPUSTACK_SERVER_EXTERNAL_URL="http://host.docker.internal:10180"
+    else
+        export GPUSTACK_SERVER_EXTERNAL_URL="http://${host_ip}:10180"
+        print_info "GPUStack 对外地址: $GPUSTACK_SERVER_EXTERNAL_URL"
+    fi
 }
 
 # 在安装 SRS 之前创建宿主机 /data（SRS 配置中 srs_log_file、dvr_path 使用容器内 /data；compose 挂载 /data:/data）
@@ -3087,10 +3105,10 @@ wait_for_kafka() {
             continue
         fi
         
-        # 方法1: 使用 kafka-broker-api-versions 命令测试（推荐）
+        # 方法1: 使用 kafka-broker-api-versions 命令测试（与 docker-compose healthcheck 一致）
         local check_result=""
         local check_error=""
-        check_result=$(docker exec kafka-server kafka-broker-api-versions.sh --bootstrap-server localhost:9092 2>&1)
+        check_result=$(docker exec kafka-server /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 2>&1)
         local check_exit_code=$?
         
         if [ $check_exit_code -eq 0 ]; then
@@ -3100,7 +3118,7 @@ wait_for_kafka() {
         
         # 方法2: 如果方法1失败，尝试使用 kafka-topics.sh 命令
         if [ $check_exit_code -ne 0 ]; then
-            check_result=$(docker exec kafka-server kafka-topics.sh --bootstrap-server localhost:9092 --list 2>&1)
+            check_result=$(docker exec kafka-server /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list 2>&1)
             check_exit_code=$?
             if [ $check_exit_code -eq 0 ]; then
                 print_success "Kafka 服务已就绪（通过 topics 命令验证）"
@@ -4355,6 +4373,9 @@ extract_ports_from_compose() {
             "DorisBE")
                 ports=("8040" "9060")
                 ;;
+            "GPUStack")
+                ports=("10180" "10161")
+                ;;
         esac
     fi
     
@@ -4393,6 +4414,7 @@ check_and_clean_ports() {
             "FlinkTaskManager") container_name="flink-taskmanager" ;;
             "DorisFE") container_name="doris-fe-server" ;;
             "DorisBE") container_name="doris-be-server" ;;
+            "GPUStack") container_name="gpustack-server" ;;
         esac
         
         if [ -n "$container_name" ]; then
@@ -4984,6 +5006,7 @@ check_and_clean_ports() {
                                     "FlinkTaskManager") container_name="flink-taskmanager" ;;
                                     "DorisFE") container_name="doris-fe-server" ;;
                                     "DorisBE") container_name="doris-be-server" ;;
+                                    "GPUStack") container_name="gpustack-server" ;;
                                 esac
                                 
                                 if [ -n "$container_name" ]; then
@@ -5109,12 +5132,13 @@ cleanup_stale_containers() {
                 "FlinkTaskManager") container_names+=("flink-taskmanager") ;;
                 "DorisFE") container_names+=("doris-fe-server") ;;
                 "DorisBE") container_names+=("doris-be-server") ;;
+                "GPUStack") container_names+=("gpustack-server") ;;
             esac
         fi
     done
     
     # 检查是否有停止的容器需要清理
-    local stale_containers=$(docker ps -a --filter "status=exited" --format "{{.Names}}" 2>/dev/null | grep -E "(nacos-server|postgres-server|tdengine-server|redis-server|kafka-server|minio-server|milvus-server|srs-server|nodered-server|emqx-server|zlmediakit-server|flink-jobmanager|flink-taskmanager|doris-fe-server|doris-be-server)" || echo "")
+    local stale_containers=$(docker ps -a --filter "status=exited" --format "{{.Names}}" 2>/dev/null | grep -E "(nacos-server|postgres-server|tdengine-server|redis-server|kafka-server|minio-server|milvus-server|srs-server|nodered-server|emqx-server|zlmediakit-server|flink-jobmanager|flink-taskmanager|doris-fe-server|doris-be-server|gpustack-server)" || echo "")
     
     if [ -n "$stale_containers" ]; then
         print_info "发现残留的停止容器，正在清理..."
@@ -5162,6 +5186,9 @@ install_middleware() {
     
     # 准备 ZLMediaKit 配置文件
     prepare_zlmediakit_config
+
+    # GPUStack Worker 注册地址
+    prepare_gpustack_env
 
     # 生成当前环境可直接执行的 Flink SQL 脚本
     prepare_flink_doris_sql_scripts || true
@@ -5212,6 +5239,7 @@ install_middleware() {
             "FlinkTaskManager") container_name="flink-taskmanager" ;;
             "DorisFE") container_name="doris-fe-server" ;;
             "DorisBE") container_name="doris-be-server" ;;
+            "GPUStack") container_name="gpustack-server" ;;
         esac
         
         if [ -n "$container_name" ]; then
@@ -5237,6 +5265,7 @@ install_middleware() {
                 "FlinkTaskManager") print_info "  docker logs flink-taskmanager" ;;
                 "DorisFE") print_info "  docker logs doris-fe-server" ;;
                 "DorisBE") print_info "  docker logs doris-be-server" ;;
+                "GPUStack") print_info "  docker logs gpustack-server" ;;
                 *) print_info "  docker-compose logs $service" ;;
             esac
         done
@@ -5244,6 +5273,10 @@ install_middleware() {
     fi
     
     print_success "中间件安装完成"
+    echo ""
+    print_info "GPUStack 资源管控: http://localhost:10180"
+    print_info "  用户: admin"
+    print_info "  密码: ${GPUSTACK_BOOTSTRAP_PASSWORD:-basiclab@iotp4JWmQSvzdh0z4mF}"
     echo ""
     print_info "等待服务启动..."
     sleep 10
@@ -5303,6 +5336,9 @@ start_middleware() {
     
     # 准备 ZLMediaKit 配置文件
     prepare_zlmediakit_config
+
+    # GPUStack Worker 注册地址
+    prepare_gpustack_env
 
     # 生成当前环境可直接执行的 Flink SQL 脚本
     prepare_flink_doris_sql_scripts || true
@@ -5376,6 +5412,9 @@ restart_middleware() {
     
     # 准备 ZLMediaKit 配置文件
     prepare_zlmediakit_config
+
+    # GPUStack Worker 注册地址
+    prepare_gpustack_env
 
     # 生成当前环境可直接执行的 Flink SQL 脚本
     prepare_flink_doris_sql_scripts || true
@@ -5576,6 +5615,7 @@ clean_middleware() {
             "milvus_data"               # Milvus 数据
             "flink_data"                # Flink JobManager / TaskManager 数据
             "doris_data"                # Doris FE / BE 数据与日志
+            "gpustack_data"             # GPUStack 数据
             "srs_data"                  # SRS 配置、数据和回放
             "nodered_data"              # NodeRED 数据
         )
@@ -5704,6 +5744,9 @@ update_middleware() {
     
     # 准备 ZLMediaKit 配置文件
     prepare_zlmediakit_config
+
+    # GPUStack Worker 注册地址
+    prepare_gpustack_env
 
     # 生成当前环境可直接执行的 Flink SQL 脚本
     prepare_flink_doris_sql_scripts || true

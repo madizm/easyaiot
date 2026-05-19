@@ -8,6 +8,12 @@ AI/services/auto-labeling/uploads/** -diff
 # auto-labeling 标注数据目录：不参与 diff
 AI/services/auto-labeling/static/annotations/** -diff
 
+# gpustack 数据目录：不参与 diff
+.scripts/docker/gpustack_data/** -diff
+
+# ZLMediaKit 运行时配置：不参与 diff
+.scripts/zlmediakit/conf/config.ini -diff
+
 *.png binary
 *.jpg binary
 *.mp4 binary

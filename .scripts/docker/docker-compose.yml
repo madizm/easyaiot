@@ -553,6 +553,36 @@ services:
     networks:
       - easyaiot-network
 
+  # GPUStack v2.1.2 — GPU/算力资源监测与管控（Web UI、集群与 Worker 管理）
+  # Web UI: http://localhost:10180  用户 admin，密码见 GPUSTACK_BOOTSTRAP_PASSWORD（仅首次初始化生效）
+  GPUStack:
+    image: gpustack/gpustack:v2.1.2
+    container_name: gpustack-server
+    restart: always
+    environment:
+      - TZ=Asia/Shanghai
+      # Worker 注册地址（install 脚本会根据宿主机 IP 注入 GPUSTACK_SERVER_EXTERNAL_URL）
+      - GPUSTACK_SERVER_EXTERNAL_URL=${GPUSTACK_SERVER_EXTERNAL_URL:-http://host.docker.internal:10180}
+      # 默认 admin 初始密码（bootstrap 仅在首次创建数据目录时生效）
+      - GPUSTACK_BOOTSTRAP_PASSWORD=${GPUSTACK_BOOTSTRAP_PASSWORD:-basiclab@iotp4JWmQSvzdh0z4mF}
+    volumes:
+      - "./gpustack_data:/var/lib/gpustack:rw"
+      # 用于在本机注册 Worker、管理推理容器
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "0.0.0.0:10180:80" # Web UI 与 API（避免占用宿主机 80）
+      - "0.0.0.0:10161:10161" # Server metrics
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/ >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    networks:
+      - easyaiot-network
+
 # 磁盘挂载
 volumes:
   nacos_data:

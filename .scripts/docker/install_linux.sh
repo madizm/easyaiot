@@ -1052,6 +1052,7 @@ verify_all() {
         echo -e "  基础服务 (Nacos):     http://localhost:8848/nacos"
         echo -e "  基础服务 (MinIO):     http://localhost:9000 (API), http://localhost:9001 (Console)"
         echo -e "  基础服务 (Milvus):    http://localhost:9091 (Health), localhost:19530 (gRPC)"
+        echo -e "  基础服务 (GPUStack):  http://localhost:10180  (用户 admin)"
         echo -e "  Device服务 (Gateway):  http://localhost:48080"
         echo -e "  AI服务:                http://localhost:5000"
         echo -e "  Video服务:             http://localhost:6000"

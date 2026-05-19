@@ -55,6 +55,7 @@ hs_err_pid*
 .scripts/docker/srs_data/
 .scripts/docker/standalone-logs/
 .scripts/docker/taos_data/
+.scripts/docker/gpustack_data/
 
 # .scripts/nexus3 数据目录
 .scripts/nexus3/nexus_data/
@@ -62,6 +63,7 @@ hs_err_pid*
 # ZLMediaKit 挂载目录（与 docker-compose 中 ../zlmediakit 对应）；运行时数据
 .scripts/zlmediakit/www/
 .scripts/zlmediakit/log/
+.scripts/zlmediakit/conf/config.ini
 
 # alert_images 文件夹
 **/alert_images/

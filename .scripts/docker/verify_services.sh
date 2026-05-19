@@ -204,7 +204,7 @@ verify_service "Redis" "redis-server" "6379" \
 
 # Kafka
 verify_service "Kafka" "kafka-server" "9092,9093" \
-    "docker exec kafka-server kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"
+    "docker exec kafka-server /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"
 
 # MinIO
 verify_service "MinIO" "minio-server" "9000,9001" \
@@ -221,6 +221,10 @@ verify_service "NodeRED" "nodered-server" "1880" \
 # EMQX
 verify_service "EMQX" "emqx-server" "1883,8883,8083,8084,18083" \
     "docker exec emqx-server /opt/emqx/bin/emqx ctl status > /dev/null 2>&1"
+
+# GPUStack v2.1.2
+verify_service "GPUStack" "gpustack-server" "10180,10161" \
+    "curl -f http://127.0.0.1:10180/ > /dev/null 2>&1"
 
 # 显示总结
 print_section "验证总结"
