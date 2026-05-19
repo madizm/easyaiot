@@ -2,10 +2,10 @@
 -- PostgreSQL database dump
 --
 
-\restrict mxtmdLkbhrjgyaTtpEH6lt2YtwvBCQuZm7tbmtH99rJSDMhUQwZ0Ba1AQPtTBUP
+\restrict MwGZKj5ImbR8TLVJkCcg25ROS2FqE0qKmSwbEq38NTTPLZXUMGplI4I5KENDdwZ
 
--- Dumped from database version 18.1 (Debian 18.1-1.pgdg13+2)
--- Dumped by pg_dump version 18.1 (Debian 18.1-1.pgdg13+2)
+-- Dumped from database version 18.3 (Debian 18.3-1.pgdg13+1)
+-- Dumped by pg_dump version 18.3 (Debian 18.3-1.pgdg13+1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -27,10 +27,10 @@ DROP DATABASE IF EXISTS "iot-ai20";
 CREATE DATABASE "iot-ai20" WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROVIDER = libc LOCALE = 'en_US.utf8';
 
 
-\unrestrict mxtmdLkbhrjgyaTtpEH6lt2YtwvBCQuZm7tbmtH99rJSDMhUQwZ0Ba1AQPtTBUP
+\unrestrict MwGZKj5ImbR8TLVJkCcg25ROS2FqE0qKmSwbEq38NTTPLZXUMGplI4I5KENDdwZ
 \encoding SQL_ASCII
 \connect -reuse-previous=on "dbname='iot-ai20'"
-\restrict mxtmdLkbhrjgyaTtpEH6lt2YtwvBCQuZm7tbmtH99rJSDMhUQwZ0Ba1AQPtTBUP
+\restrict MwGZKj5ImbR8TLVJkCcg25ROS2FqE0qKmSwbEq38NTTPLZXUMGplI4I5KENDdwZ
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -90,6 +90,216 @@ CREATE SEQUENCE public.ai_service_id_seq
 --
 
 ALTER SEQUENCE public.ai_service_id_seq OWNED BY public.ai_service.id;
+
+
+--
+-- Name: auto_label_result; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.auto_label_result (
+    id integer NOT NULL,
+    task_id integer NOT NULL,
+    dataset_image_id bigint NOT NULL,
+    annotations text,
+    status character varying(20) NOT NULL,
+    error_message text,
+    created_at timestamp without time zone
+);
+
+
+--
+-- Name: COLUMN auto_label_result.task_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.auto_label_result.task_id IS '任务ID';
+
+
+--
+-- Name: COLUMN auto_label_result.dataset_image_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.auto_label_result.dataset_image_id IS '数据集图片ID';
+
+
+--
+-- Name: COLUMN auto_label_result.annotations; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.auto_label_result.annotations IS '标注结果JSON';
+
+
+--
+-- Name: COLUMN auto_label_result.status; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.auto_label_result.status IS '状态[SUCCESS:成功,FAILED:失败]';
+
+
+--
+-- Name: COLUMN auto_label_result.error_message; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.auto_label_result.error_message IS '错误信息';
+
+
+--
+-- Name: COLUMN auto_label_result.created_at; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.auto_label_result.created_at IS '创建时间';
+
+
+--
+-- Name: auto_label_result_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.auto_label_result_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: auto_label_result_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.auto_label_result_id_seq OWNED BY public.auto_label_result.id;
+
+
+--
+-- Name: auto_label_task; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.auto_label_task (
+    id integer NOT NULL,
+    dataset_id bigint NOT NULL,
+    model_service_id integer,
+    status character varying(20) NOT NULL,
+    total_images integer,
+    processed_images integer,
+    success_count integer,
+    failed_count integer,
+    confidence_threshold double precision,
+    created_at timestamp without time zone,
+    updated_at timestamp without time zone,
+    started_at timestamp without time zone,
+    completed_at timestamp without time zone,
+    error_message text
+);
+
+
+--
+-- Name: COLUMN auto_label_task.dataset_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.auto_label_task.dataset_id IS '数据集ID';
+
+
+--
+-- Name: COLUMN auto_label_task.model_service_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.auto_label_task.model_service_id IS 'AI服务ID';
+
+
+--
+-- Name: COLUMN auto_label_task.status; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.auto_label_task.status IS '状态[PENDING:待处理,PROCESSING:处理中,COMPLETED:已完成,FAILED:失败]';
+
+
+--
+-- Name: COLUMN auto_label_task.total_images; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.auto_label_task.total_images IS '总图片数';
+
+
+--
+-- Name: COLUMN auto_label_task.processed_images; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.auto_label_task.processed_images IS '已处理图片数';
+
+
+--
+-- Name: COLUMN auto_label_task.success_count; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.auto_label_task.success_count IS '成功标注数';
+
+
+--
+-- Name: COLUMN auto_label_task.failed_count; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.auto_label_task.failed_count IS '失败数';
+
+
+--
+-- Name: COLUMN auto_label_task.confidence_threshold; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.auto_label_task.confidence_threshold IS '置信度阈值';
+
+
+--
+-- Name: COLUMN auto_label_task.created_at; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.auto_label_task.created_at IS '创建时间';
+
+
+--
+-- Name: COLUMN auto_label_task.updated_at; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.auto_label_task.updated_at IS '更新时间';
+
+
+--
+-- Name: COLUMN auto_label_task.started_at; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.auto_label_task.started_at IS '开始时间';
+
+
+--
+-- Name: COLUMN auto_label_task.completed_at; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.auto_label_task.completed_at IS '完成时间';
+
+
+--
+-- Name: COLUMN auto_label_task.error_message; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.auto_label_task.error_message IS '错误信息';
+
+
+--
+-- Name: auto_label_task_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.auto_label_task_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: auto_label_task_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.auto_label_task_id_seq OWNED BY public.auto_label_task.id;
 
 
 --
@@ -353,7 +563,8 @@ CREATE TABLE public.model (
     torchscript_model_path character varying(500),
     tensorrt_model_path character varying(500),
     openvino_model_path character varying(500),
-    rknn_model_path character varying(500)
+    rknn_model_path character varying(500),
+    status integer DEFAULT 0
 );
 
 
@@ -416,6 +627,167 @@ ALTER SEQUENCE public.ocr_result_id_seq OWNED BY public.ocr_result.id;
 
 
 --
+-- Name: plate_algorithm_version; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.plate_algorithm_version (
+    id integer NOT NULL,
+    version character varying(50) NOT NULL,
+    description text,
+    base_model character varying(100) NOT NULL,
+    model_path character varying(500),
+    metrics_path character varying(500),
+    train_results_path character varying(500),
+    status character varying(20) NOT NULL,
+    is_active boolean NOT NULL,
+    created_at timestamp without time zone,
+    updated_at timestamp without time zone
+);
+
+
+--
+-- Name: plate_algorithm_version_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.plate_algorithm_version_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: plate_algorithm_version_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.plate_algorithm_version_id_seq OWNED BY public.plate_algorithm_version.id;
+
+
+--
+-- Name: plate_dataset; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.plate_dataset (
+    id integer NOT NULL,
+    name character varying(100) NOT NULL,
+    description text,
+    dataset_source character varying(1000) NOT NULL,
+    source_type character varying(20) NOT NULL,
+    status character varying(20) NOT NULL,
+    merged_from text,
+    created_at timestamp without time zone,
+    updated_at timestamp without time zone
+);
+
+
+--
+-- Name: plate_dataset_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.plate_dataset_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: plate_dataset_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.plate_dataset_id_seq OWNED BY public.plate_dataset.id;
+
+
+--
+-- Name: plate_inference_task; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.plate_inference_task (
+    id integer NOT NULL,
+    version_id integer,
+    status character varying(20) NOT NULL,
+    input_source character varying(1000),
+    output_image_path character varying(500),
+    output_json_path character varying(500),
+    detection_count integer NOT NULL,
+    result_preview text,
+    error_message text,
+    processing_time double precision,
+    created_at timestamp without time zone,
+    updated_at timestamp without time zone
+);
+
+
+--
+-- Name: plate_inference_task_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.plate_inference_task_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: plate_inference_task_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.plate_inference_task_id_seq OWNED BY public.plate_inference_task.id;
+
+
+--
+-- Name: plate_train_task; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.plate_train_task (
+    id integer NOT NULL,
+    version_id integer,
+    status character varying(20) NOT NULL,
+    progress integer NOT NULL,
+    dataset_source character varying(1000) NOT NULL,
+    dataset_local_path character varying(1000),
+    normalized_data_yaml character varying(1000),
+    hyperparameters text,
+    train_log text NOT NULL,
+    error_message text,
+    minio_model_path character varying(500),
+    metrics_path character varying(500),
+    train_results_path character varying(500),
+    start_time timestamp without time zone,
+    end_time timestamp without time zone,
+    created_at timestamp without time zone,
+    updated_at timestamp without time zone
+);
+
+
+--
+-- Name: plate_train_task_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.plate_train_task_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: plate_train_task_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.plate_train_task_id_seq OWNED BY public.plate_train_task.id;
+
+
+--
 -- Name: speech_record; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -472,7 +844,10 @@ CREATE TABLE public.train_task (
     checkpoint_dir character varying(500) NOT NULL,
     metrics_path text,
     minio_model_path character varying(500),
-    train_results_path character varying(500)
+    train_results_path character varying(500),
+    name character varying(100),
+    dataset_name character varying(100),
+    dataset_version character varying(100)
 );
 
 
@@ -501,6 +876,20 @@ ALTER SEQUENCE public.train_task_id_seq OWNED BY public.train_task.id;
 --
 
 ALTER TABLE ONLY public.ai_service ALTER COLUMN id SET DEFAULT nextval('public.ai_service_id_seq'::regclass);
+
+
+--
+-- Name: auto_label_result id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.auto_label_result ALTER COLUMN id SET DEFAULT nextval('public.auto_label_result_id_seq'::regclass);
+
+
+--
+-- Name: auto_label_task id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.auto_label_task ALTER COLUMN id SET DEFAULT nextval('public.auto_label_task_id_seq'::regclass);
 
 
 --
@@ -539,6 +928,34 @@ ALTER TABLE ONLY public.ocr_result ALTER COLUMN id SET DEFAULT nextval('public.o
 
 
 --
+-- Name: plate_algorithm_version id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.plate_algorithm_version ALTER COLUMN id SET DEFAULT nextval('public.plate_algorithm_version_id_seq'::regclass);
+
+
+--
+-- Name: plate_dataset id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.plate_dataset ALTER COLUMN id SET DEFAULT nextval('public.plate_dataset_id_seq'::regclass);
+
+
+--
+-- Name: plate_inference_task id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.plate_inference_task ALTER COLUMN id SET DEFAULT nextval('public.plate_inference_task_id_seq'::regclass);
+
+
+--
+-- Name: plate_train_task id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.plate_train_task ALTER COLUMN id SET DEFAULT nextval('public.plate_train_task_id_seq'::regclass);
+
+
+--
 -- Name: speech_record id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -558,6 +975,22 @@ ALTER TABLE ONLY public.train_task ALTER COLUMN id SET DEFAULT nextval('public.t
 
 COPY public.ai_service (id, model_id, service_name, server_ip, port, inference_endpoint, status, mac_address, deploy_time, last_heartbeat, process_id, log_path, model_version, format, created_at, updated_at) FROM stdin;
 1	3	model_3_pytorch_1.0.1	192.168.11.28	9999	http://192.168.11.28:9999/inference	stopped	30:c1:05:16:5a:68	2025-11-23 05:03:15.111839	2025-12-11 14:34:14.839699	1252756	/opt/projects/easyaiot/AI/logs/1	1.0.1	pytorch	2025-11-23 05:03:15.113205	2025-12-11 14:34:14.839944
+\.
+
+
+--
+-- Data for Name: auto_label_result; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.auto_label_result (id, task_id, dataset_image_id, annotations, status, error_message, created_at) FROM stdin;
+\.
+
+
+--
+-- Data for Name: auto_label_task; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.auto_label_task (id, dataset_id, model_service_id, status, total_images, processed_images, success_count, failed_count, confidence_threshold, created_at, updated_at, started_at, completed_at, error_message) FROM stdin;
 \.
 
 
@@ -646,13 +1079,19 @@ COPY public.llm_config (id, name, service_type, vendor, model_type, model_name, 
 -- Data for Name: model; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY public.model (id, name, description, model_path, image_url, version, created_at, updated_at, onnx_model_path, torchscript_model_path, tensorrt_model_path, openvino_model_path, rknn_model_path) FROM stdin;
-3	安全帽模型	识别安全帽的模型	/api/v1/buckets/models/objects/download?prefix=yolo/yolov8/9e75951cea044845be8f8f1f2223c551.pt	/api/v1/buckets/models/objects/download?prefix=images/7e6ef2e33af64a18add7f91a66b6403e.jpg	1.0.1	2025-11-22 08:33:51.975637	2025-11-22 23:26:10.155647	exports/model_3/onnx/model.onnx	\N	\N	exports/model_3/openvino/model_openvino_model/	\N
-5	反光衣模型	识别反光衣的模型	/api/v1/buckets/models/objects/download?prefix=yolo/yolov8/c7b364e123a84f70a954403399c61dac.pt	/api/v1/buckets/models/objects/download?prefix=images/8830aeff514e40a284b93895ed455368.jpg	1.0.0	2025-11-22 23:26:47.840522	2025-11-22 23:26:47.840524	\N	\N	\N	\N	\N
-6	睡岗模型	识别在岗位睡觉的模型	/api/v1/buckets/models/objects/download?prefix=yolo/yolov8/21f8ba84e4e64d9a9de924d3eb246033.pt	/api/v1/buckets/models/objects/download?prefix=images/3e03ffae14114b29867b1dad357e9e23.png	1.0.0	2025-11-22 23:27:35.012975	2025-11-22 23:27:35.012977	\N	\N	\N	\N	\N
-7	火焰模型	识别火焰的模型	/api/v1/buckets/models/objects/download?prefix=yolo/yolov8/df55c892173c4f3e96b3462e833f0e75.pt	/api/v1/buckets/models/objects/download?prefix=images/f2f4d01febfd43fabbb7bb0ba4953b73.jpg	1.0.0	2025-11-22 23:29:18.785875	2025-11-22 23:29:18.785877	\N	\N	\N	\N	\N
-8	吸烟模型	用于识别吸烟的模型	/api/v1/buckets/models/objects/download?prefix=yolo/yolov8/baaab3e73fd74064ae42d57b0e170663.pt	/api/v1/buckets/models/objects/download?prefix=images/aeff29bbcd514e16a8e6a0a7906f9db9.jpg	1.0.0	2025-11-22 23:30:37.986784	2025-11-22 23:30:37.986786	\N	\N	\N	\N	\N
-1	人模型	用于识别人的AI算法	/api/v1/buckets/models/objects/download?prefix=yolo/yolov11/362479958ba04288b42ab1796f9afa57.pt	/api/v1/buckets/models/objects/download?prefix=images/69707887371944979f0fa32091e46b11.jpg	1.0.0	2025-08-25 10:37:44.147967	2025-11-22 23:31:45.752278	\N	\N	\N	\N	\N
+COPY public.model (id, name, description, model_path, image_url, version, created_at, updated_at, onnx_model_path, torchscript_model_path, tensorrt_model_path, openvino_model_path, rknn_model_path, status) FROM stdin;
+3	安全帽模型	识别安全帽的模型	/api/v1/buckets/models/objects/download?prefix=yolo/yolov8/9e75951cea044845be8f8f1f2223c551.pt	/api/v1/buckets/models/objects/download?prefix=images/7e6ef2e33af64a18add7f91a66b6403e.jpg	1.0.1	2025-11-22 08:33:51.975637	2025-11-22 23:26:10.155647	exports/model_3/onnx/model.onnx	\N	\N	exports/model_3/openvino/model_openvino_model/	\N	0
+6	睡岗模型	识别在岗位睡觉的模型	/api/v1/buckets/models/objects/download?prefix=yolo/yolov8/21f8ba84e4e64d9a9de924d3eb246033.pt	/api/v1/buckets/models/objects/download?prefix=images/3e03ffae14114b29867b1dad357e9e23.png	1.0.0	2025-11-22 23:27:35.012975	2025-11-22 23:27:35.012977	\N	\N	\N	\N	\N	0
+1	人模型	用于识别人的AI算法	/api/v1/buckets/models/objects/download?prefix=yolo/yolov11/362479958ba04288b42ab1796f9afa57.pt	/api/v1/buckets/models/objects/download?prefix=images/69707887371944979f0fa32091e46b11.jpg	1.0.0	2025-08-25 10:37:44.147967	2025-11-22 23:31:45.752278	\N	\N	\N	\N	\N	0
+5	反光衣模型	识别反光衣的模型	/api/v1/buckets/models/objects/download?prefix=yolo/yolov8/c7b364e123a84f70a954403399c61dac.pt	/api/v1/buckets/models/objects/download?prefix=images/a36ab47d67044d6eb07d58aa399bd78b.png	1.0.0	2025-11-22 23:26:47.840522	2026-05-18 09:25:45.554297	\N	\N	\N	\N	\N	0
+7	火焰模型	识别火焰的模型	/api/v1/buckets/models/objects/download?prefix=yolo/yolov8/df55c892173c4f3e96b3462e833f0e75.pt	/api/v1/buckets/models/objects/download?prefix=images/d81d3fe5476e4701a34b94e07cdc2820.png	1.0.0	2025-11-22 23:29:18.785875	2026-05-18 09:26:28.338878	\N	\N	\N	\N	\N	0
+8	吸烟模型	用于识别吸烟的模型	/api/v1/buckets/models/objects/download?prefix=yolo/yolov8/baaab3e73fd74064ae42d57b0e170663.pt	/api/v1/buckets/models/objects/download?prefix=images/96e7070b3102445cb9f948849677d1ea.png	1.0.0	2025-11-22 23:30:37.986784	2026-05-18 09:26:54.353864	\N	\N	\N	\N	\N	0
+10	打电话模型	用于识别打电话的模型	/api/v1/buckets/models/objects/download?prefix=yolo/yolov8/onnx/6e25627aa8434831b4ddcee194b8be59.onnx	/api/v1/buckets/models/objects/download?prefix=images/ac4cdfd5ee5a4283a951d19cdf92e9e5.png	v1.0.0	2026-05-18 09:29:56.19438	2026-05-18 09:29:56.194384	\N	\N	\N	\N	\N	0
+12	道路积水模型	识别道路积水的模型	/api/v1/buckets/models/objects/download?prefix=yolo/yolov8/onnx/f4e85385c70049efbf6bb748d2e2746f.onnx	/api/v1/buckets/models/objects/download?prefix=images/8153678ba3a346ae887a0a633e376217.png	v1.0.0	2026-05-18 09:35:44.770934	2026-05-18 09:35:44.770939	\N	\N	\N	\N	\N	0
+11	口罩模型	用于识别口罩的模型	/api/v1/buckets/models/objects/download?prefix=yolo/yolov8/onnx/1c9a1e98bf114ffa990701292c41dd82.onnx	/api/v1/buckets/models/objects/download?prefix=images/fafd5c18743e41e2903dc9eaaa9d4722.png	v1.0.0	2026-05-18 09:33:22.887931	2026-05-18 09:35:51.370426	\N	\N	\N	\N	\N	0
+13	跌倒检测模型	识别跌倒检测的模型	/api/v1/buckets/models/objects/download?prefix=yolo/yolov8/onnx/f7bd3b98d1ea476c98761b57d42f73c4.onnx	/api/v1/buckets/models/objects/download?prefix=images/283c519096264729b82ac8f413ebf8a0.png	v1.0.0	2026-05-19 01:14:05.336851	2026-05-19 01:14:05.336854	\N	\N	\N	\N	\N	0
+14	人脸检测模型	识别人脸的模型	/api/v1/buckets/models/objects/download?prefix=yolo/yolov8/onnx/573ce175b4134208aa03d8bacfc76a4d.onnx	/api/v1/buckets/models/objects/download?prefix=images/77a9217ff3a048b1a1b672a105b18caf.png	v1.0.0	2026-05-19 01:16:50.221649	2026-05-19 01:16:50.221654	\N	\N	\N	\N	\N	0
+9	车牌模型	用于识别车牌的模型	/api/v1/buckets/models/objects/download?prefix=yolo/yolov8/onnx/974487e51ee649b69bbdf691545976cd.onnx	/api/v1/buckets/models/objects/download?prefix=images/47e184f6949c4001b46e93a36259c750.png	v1.0.0	2026-05-18 08:59:45.326275	2026-05-19 01:48:52.320976	\N	\N	\N	\N	\N	0
 \.
 
 
@@ -661,6 +1100,38 @@ COPY public.model (id, name, description, model_path, image_url, version, create
 --
 
 COPY public.ocr_result (id, text, confidence, bbox, polygon, page_num, line_num, word_num, image_url, created_at) FROM stdin;
+\.
+
+
+--
+-- Data for Name: plate_algorithm_version; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.plate_algorithm_version (id, version, description, base_model, model_path, metrics_path, train_results_path, status, is_active, created_at, updated_at) FROM stdin;
+\.
+
+
+--
+-- Data for Name: plate_dataset; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.plate_dataset (id, name, description, dataset_source, source_type, status, merged_from, created_at, updated_at) FROM stdin;
+\.
+
+
+--
+-- Data for Name: plate_inference_task; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.plate_inference_task (id, version_id, status, input_source, output_image_path, output_json_path, detection_count, result_preview, error_message, processing_time, created_at, updated_at) FROM stdin;
+\.
+
+
+--
+-- Data for Name: plate_train_task; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.plate_train_task (id, version_id, status, progress, dataset_source, dataset_local_path, normalized_data_yaml, hyperparameters, train_log, error_message, minio_model_path, metrics_path, train_results_path, start_time, end_time, created_at, updated_at) FROM stdin;
 \.
 
 
@@ -676,27 +1147,27 @@ COPY public.speech_record (id, order_id, audio_file_path, filename, file_size, d
 -- Data for Name: train_task; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY public.train_task (id, model_id, progress, dataset_path, hyperparameters, start_time, end_time, status, train_log, checkpoint_dir, metrics_path, minio_model_path, train_results_path) FROM stdin;
-6	1	10	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "model/yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 04:20:12.508389	\N	preparing	[2025-08-30 12:20:13] 开始准备训练数据，项目ID: 1\n[2025-08-30 12:20:13] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 12:20:14] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 12:20:14] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 12:20:14] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 12:20:14] 检查数据集配置文件...\n[2025-08-30 12:20:14] 加载预训练YOLOv8模型...\n[2025-08-30 12:20:14] 尝试加载预训练模型: /projects/easyaiot/AI/model/yolov8n.pt\n		\N	\N	\N
-3	1	10	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "model/yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 04:09:03.61429	\N	preparing	[2025-08-30 12:09:04] 开始准备训练数据，项目ID: 1\n[2025-08-30 12:09:04] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 12:09:04] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 12:09:05] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 12:09:05] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 12:09:05] 检查数据集配置文件...\n[2025-08-30 12:09:05] 加载预训练YOLOv8模型...\n[2025-08-30 12:09:05] 尝试加载预训练模型: /projects/easyaiot/AI/model/yolov8n.pt\n		\N	\N	\N
-2	1	10	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "model/yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 04:05:45.965389	\N	preparing	[2025-08-30 12:05:47] 开始准备训练数据，项目ID: 1\n[2025-08-30 12:05:47] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 12:05:47] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 12:05:47] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 12:05:47] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 12:05:47] 检查数据集配置文件...\n[2025-08-30 12:05:47] 加载预训练YOLOv8模型...\n[2025-08-30 12:05:47] 尝试加载预训练模型: /projects/easyaiot/AI/model/yolov8n.pt\n		\N	\N	\N
-4	1	10	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "model/yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 04:14:05.135787	\N	preparing	[2025-08-30 12:14:06] 开始准备训练数据，项目ID: 1\n[2025-08-30 12:14:06] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 12:14:06] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 12:14:06] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 12:14:06] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 12:14:06] 检查数据集配置文件...\n[2025-08-30 12:14:06] 加载预训练YOLOv8模型...\n[2025-08-30 12:14:07] 尝试加载预训练模型: /projects/easyaiot/AI/model/yolov8n.pt\n		\N	\N	\N
-1	1	10	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "model/yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 04:04:49.247897	\N	preparing	[2025-08-30 12:04:50] 开始准备训练数据，项目ID: 1\n[2025-08-30 12:04:50] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 12:04:50] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 12:04:50] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 12:04:50] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 12:04:50] 检查数据集配置文件...\n[2025-08-30 12:04:50] 加载预训练YOLOv8模型...\n[2025-08-30 12:04:51] 尝试加载预训练模型: /projects/easyaiot/AI/model/yolov8n.pt\n		\N	\N	\N
-5	1	10	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "model/yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 04:17:50.939088	\N	preparing	[2025-08-30 12:17:52] 开始准备训练数据，项目ID: 1\n[2025-08-30 12:17:52] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 12:17:52] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 12:17:52] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 12:17:52] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 12:17:52] 检查数据集配置文件...\n[2025-08-30 12:17:52] 加载预训练YOLOv8模型...\n[2025-08-30 12:17:52] 尝试加载预训练模型: /projects/easyaiot/AI/model/yolov8n.pt\n		\N	\N	\N
-7	1	10	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "model/yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 04:32:47.695145	\N	preparing	[2025-08-30 12:32:48] 开始准备训练数据，项目ID: 1\n[2025-08-30 12:32:48] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 12:32:48] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 12:32:49] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 12:32:49] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 12:32:49] 检查数据集配置文件...\n[2025-08-30 12:32:49] 加载预训练YOLOv8模型...\n[2025-08-30 12:32:49] 尝试加载预训练模型: /projects/easyaiot/AI/model/yolov8n.pt\n		\N	\N	\N
-8	1	10	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "model/yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 04:36:01.576862	\N	error	[2025-08-30 12:36:27] 开始准备训练数据，项目ID: 1\n[2025-08-30 12:37:01] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 12:37:14] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 12:37:15] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 12:37:21] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 12:37:22] 检查数据集配置文件...\n[2025-08-30 12:37:53] 加载预训练YOLOv8模型...\n[2025-08-30 12:37:56] 尝试加载预训练模型: /projects/easyaiot/AI/model/yolov8n.pt\n[2025-08-30 12:38:08] 预训练模型加载失败: PytorchStreamReader failed reading zip archive: invalid header or archive is corrupted\n		\N	\N	\N
-10	1	10	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "model/yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 04:43:39.87098	\N	error	[2025-08-30 12:43:40] 开始准备训练数据，项目ID: 1\n[2025-08-30 12:43:41] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 12:43:41] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 12:43:41] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 12:43:41] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 12:43:41] 检查数据集配置文件...\n[2025-08-30 12:43:41] 加载预训练YOLOv8模型...\n[2025-08-30 12:43:41] 尝试加载预训练模型: /projects/easyaiot/AI/model/yolov8n.pt\n[2025-08-30 12:43:41] 预训练模型加载失败: PytorchStreamReader failed reading zip archive: invalid header or archive is corrupted\n		\N	\N	\N
-11	1	10	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "model/yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 04:50:11.207953	\N	preparing	[2025-08-30 12:50:12] 开始准备训练数据，项目ID: 1\n[2025-08-30 12:50:12] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 12:50:12] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 12:50:12] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 12:50:12] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 12:50:12] 检查数据集配置文件...\n[2025-08-30 12:50:13] 加载预训练YOLOv8模型...\n[2025-08-30 12:50:13] 尝试加载预训练模型: /projects/easyaiot/AI/model/yolov8n.pt\n		\N	\N	\N
-13	1	10	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "model/yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 04:52:34.809657	\N	error	[2025-08-30 12:52:35] 开始准备训练数据，项目ID: 1\n[2025-08-30 12:52:36] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 12:52:36] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 12:52:36] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 12:52:36] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 12:52:36] 检查数据集配置文件...\n[2025-08-30 12:52:36] 加载预训练YOLOv8模型...\n[2025-08-30 12:52:36] 尝试加载预训练模型: /projects/easyaiot/AI/model/yolov8n.pt\n[2025-08-30 12:52:36] 预训练模型加载失败: PytorchStreamReader failed reading zip archive: invalid header or archive is corrupted\n		\N	\N	\N
-12	1	10	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "model/yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 04:50:59.492811	\N	preparing	[2025-08-30 12:51:00] 开始准备训练数据，项目ID: 1\n[2025-08-30 12:51:00] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 12:51:00] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 12:51:00] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 12:51:01] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 12:51:01] 检查数据集配置文件...\n[2025-08-30 12:51:01] 加载预训练YOLOv8模型...\n[2025-08-30 12:51:01] 尝试加载预训练模型: /projects/easyaiot/AI/model/yolov8n.pt\n		\N	\N	\N
-9	1	10	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "model/yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 04:42:51.803234	\N	error	[2025-08-30 12:42:57] 开始准备训练数据，项目ID: 1\n[2025-08-30 12:42:57] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 12:42:58] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 12:42:58] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 12:42:58] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 12:42:58] 检查数据集配置文件...\n[2025-08-30 12:42:58] 加载预训练YOLOv8模型...\n[2025-08-30 12:42:58] 尝试加载预训练模型: /projects/easyaiot/AI/model/yolov8n.pt\n[2025-08-30 12:43:01] 预训练模型文件不存在: /projects/easyaiot/AI/model/yolov8n.pt\n		\N	\N	\N
-14	1	10	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "model/yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 04:57:12.432184	\N	error	[2025-08-30 12:57:13] 开始准备训练数据，项目ID: 1\n[2025-08-30 12:57:13] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 12:57:13] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 12:57:13] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 12:57:14] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 12:57:14] 检查数据集配置文件...\n[2025-08-30 12:57:14] 加载预训练YOLOv8模型...\n[2025-08-30 12:57:14] 尝试加载预训练模型: /projects/easyaiot/AI/model/yolov8n.pt\n[2025-08-30 12:57:14] 预训练模型加载失败: PytorchStreamReader failed reading zip archive: invalid header or archive is corrupted\n		\N	\N	\N
-16	1	15	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "model/yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 05:02:37.73719	\N	preparing	[2025-08-30 13:02:38] 开始准备训练数据，项目ID: 1\n[2025-08-30 13:02:38] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 13:02:39] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 13:02:39] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 13:02:39] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 13:02:39] 检查数据集配置文件...\n[2025-08-30 13:02:39] 加载预训练YOLOv8模型...\n[2025-08-30 13:02:39] 尝试加载预训练模型: /projects/easyaiot/AI/model/yolov8n.pt\n[2025-08-30 13:02:39] 预训练模型加载成功! 模型路径: /projects/easyaiot/AI/model/yolov8n.pt\n[2025-08-30 13:02:39] 开始训练模型，共100个epochs...\n[2025-08-30 13:02:40] 开始训练模型，配置: 数据文件=/projects/easyaiot/AI/data/datasets/1/data.yaml, epochs=100, 图像尺寸=640x640, 批次大小=16\n[2025-08-30 13:02:40] GPU状态检查: {\n  "pytorch_version": "2.0.1+cu117",\n  "cuda_available": true,\n  "cuda_version": "11.7",\n  "device_count": 1,\n  "device_0_name": "NVIDIA RTX A5000",\n  "device_0_capability": [\n    8,\n    6\n  ]\n}\n[2025-08-30 13:02:40] 使用GPU进行训练: NVIDIA RTX A5000\n	/projects/easyaiot/AI/data/datasets/1/train_results/checkpoints	\N	\N	\N
-15	1	15	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "model/yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 04:59:21.262579	\N	preparing	[2025-08-30 12:59:22] 开始准备训练数据，项目ID: 1\n[2025-08-30 12:59:22] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 12:59:22] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 12:59:22] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 12:59:22] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 12:59:22] 检查数据集配置文件...\n[2025-08-30 12:59:23] 加载预训练YOLOv8模型...\n[2025-08-30 12:59:23] 尝试加载预训练模型: /projects/easyaiot/AI/model/yolov8n.pt\n[2025-08-30 12:59:23] 预训练模型加载成功! 模型路径: /projects/easyaiot/AI/model/yolov8n.pt\n[2025-08-30 12:59:23] 开始训练模型，共100个epochs...\n[2025-08-30 12:59:23] 开始训练模型，配置: 数据文件=/projects/easyaiot/AI/data/datasets/1/data.yaml, epochs=100, 图像尺寸=640x640, 批次大小=16\n[2025-08-30 12:59:23] GPU状态检查: {\n  "pytorch_version": "2.0.1+cu117",\n  "cuda_available": true,\n  "cuda_version": "11.7",\n  "device_count": 1,\n  "device_0_name": "NVIDIA RTX A5000",\n  "device_0_capability": [\n    8,\n    6\n  ]\n}\n[2025-08-30 12:59:24] 使用GPU进行训练: NVIDIA RTX A5000\n	/projects/easyaiot/AI/data/datasets/1/train_results/checkpoints	\N	\N	\N
-18	1	15	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "model/yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 05:09:31.896726	\N	preparing	[2025-08-30 13:09:33] 开始准备训练数据，项目ID: 1\n[2025-08-30 13:09:33] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 13:09:33] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 13:09:33] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 13:09:33] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 13:09:33] 检查数据集配置文件...\n[2025-08-30 13:09:33] 加载预训练YOLOv8模型...\n[2025-08-30 13:09:33] 尝试加载预训练模型: model/yolov8n.pt\n[2025-08-30 13:09:34] 预训练模型加载成功! 模型路径: model/yolov8n.pt\n[2025-08-30 13:09:34] 开始训练模型，共100个epochs...\n[2025-08-30 13:09:34] 开始训练模型，配置: 数据文件=/projects/easyaiot/AI/data/datasets/1/data.yaml, epochs=100, 图像尺寸=640x640, 批次大小=16\n[2025-08-30 13:09:34] GPU状态检查: {\n  "pytorch_version": "2.0.1+cu117",\n  "cuda_available": true,\n  "cuda_version": "11.7",\n  "device_count": 1,\n  "device_0_name": "NVIDIA RTX A5000",\n  "device_0_capability": [\n    8,\n    6\n  ]\n}\n[2025-08-30 13:09:34] 使用GPU进行训练: NVIDIA RTX A5000\n	/projects/easyaiot/AI/data/datasets/1/train_results/checkpoints	\N	\N	\N
-17	1	100	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "model/yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 05:04:36.030287	2025-08-30 05:07:08.50721	completed	[2025-08-30 13:04:37] 开始准备训练数据，项目ID: 1\n[2025-08-30 13:04:37] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 13:04:37] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 13:04:37] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 13:04:37] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 13:04:37] 检查数据集配置文件...\n[2025-08-30 13:04:37] 加载预训练YOLOv8模型...\n[2025-08-30 13:04:37] 尝试加载预训练模型: /projects/easyaiot/AI/model/yolov8n.pt\n[2025-08-30 13:04:38] 预训练模型加载成功! 模型路径: /projects/easyaiot/AI/model/yolov8n.pt\n[2025-08-30 13:04:38] 开始训练模型，共100个epochs...\n[2025-08-30 13:04:38] 开始训练模型，配置: 数据文件=/projects/easyaiot/AI/data/datasets/1/data.yaml, epochs=100, 图像尺寸=640x640, 批次大小=16\n[2025-08-30 13:04:38] GPU状态检查: {\n  "pytorch_version": "2.0.1+cu117",\n  "cuda_available": true,\n  "cuda_version": "11.7",\n  "device_count": 1,\n  "device_0_name": "NVIDIA RTX A5000",\n  "device_0_capability": [\n    8,\n    6\n  ]\n}\n[2025-08-30 13:04:38] 使用GPU进行训练: NVIDIA RTX A5000\n[2025-08-30 13:06:59] 训练结果CSV已上传至Minio: /api/v1/buckets/model-train/objects/download?prefix=models/model_1/train_17/results.csv\n[2025-08-30 13:07:00] 训练结果图表已上传至Minio: /api/v1/buckets/model-train/objects/download?prefix=models/model_1/train_17/results.png\n[2025-08-30 13:07:00] 训练完成，正在保存结果...\n[2025-08-30 13:07:01] 模型训练完成!\n[2025-08-30 13:07:01] 训练结果保存路径: /projects/easyaiot/AI/data/datasets/1/train_results\n[2025-08-30 13:07:01] 检查最佳模型文件是否存在: /projects/easyaiot/AI/data/datasets/1/train_results/weights/best.pt\n[2025-08-30 13:07:01] 找到最佳模型文件，开始复制到保存目录: /projects/easyaiot/AI/data/datasets/1/train_results/weights/best.pt\n[2025-08-30 13:07:01] 模型文件已成功复制到保存目录: /projects/easyaiot/AI/static/models/1/train/weights\n[2025-08-30 13:07:01] 开始上传最佳模型到Minio...\n[2025-08-30 13:07:08] 模型已成功上传至Minio: /api/v1/buckets/models/objects/download?prefix=models/model_1/train_17/best.pt\n[2025-08-30 13:07:08] 训练日志已上传至Minio: /api/v1/buckets/log-bucket/objects/download?prefix=logs/model_1/train_17.txt\n[2025-08-30 13:07:08] 模型训练完成并已保存\n	/projects/easyaiot/AI/data/datasets/1/train_results/checkpoints	/api/v1/buckets/model-train/objects/download?prefix=models/model_1/train_17/results.csv	/api/v1/buckets/models/objects/download?prefix=models/model_1/train_17/best.pt	/api/v1/buckets/model-train/objects/download?prefix=models/model_1/train_17/results.png
-19	1	10	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "model/yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 05:12:51.929875	\N	preparing	[2025-08-30 13:12:53] 开始准备训练数据，项目ID: 1\n[2025-08-30 13:12:53] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 13:12:53] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 13:12:53] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 13:12:53] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 13:12:53] 检查数据集配置文件...\n[2025-08-30 13:12:53] 加载预训练YOLOv8模型...\n[2025-08-30 13:12:53] 尝试加载预训练模型: model/yolov8n.pt\n		\N	\N	\N
-20	1	100	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 05:13:49.213499	2025-08-30 05:15:25.148511	completed	[2025-08-30 13:13:50] 开始准备训练数据，项目ID: 1\n[2025-08-30 13:13:50] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 13:13:50] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 13:13:50] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 13:13:50] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 13:13:50] 检查数据集配置文件...\n[2025-08-30 13:13:51] 加载预训练YOLOv8模型...\n[2025-08-30 13:13:51] 尝试加载预训练模型: yolov8n.pt\n[2025-08-30 13:13:51] 预训练模型加载成功!\n[2025-08-30 13:13:51] 开始训练模型，共100个epochs...\n[2025-08-30 13:13:51] 开始训练模型，配置: 数据文件=/projects/easyaiot/AI/data/datasets/1/data.yaml, epochs=100, 图像尺寸=640x640, 批次大小=16\n[2025-08-30 13:13:51] GPU状态检查: {\n  "pytorch_version": "2.0.1+cu117",\n  "cuda_available": true,\n  "cuda_version": "11.7",\n  "device_count": 1,\n  "device_0_name": "NVIDIA RTX A5000",\n  "device_0_capability": [\n    8,\n    6\n  ]\n}\n[2025-08-30 13:13:52] 使用GPU进行训练: NVIDIA RTX A5000\n[2025-08-30 13:15:16] 训练结果CSV已上传至Minio: /api/v1/buckets/model-train/objects/download?prefix=models/model_1/train_20/results.csv\n[2025-08-30 13:15:17] 训练结果图表已上传至Minio: /api/v1/buckets/model-train/objects/download?prefix=models/model_1/train_20/results.png\n[2025-08-30 13:15:17] 训练完成，正在保存结果...\n[2025-08-30 13:15:18] 模型训练完成!\n[2025-08-30 13:15:18] 训练结果保存路径: /projects/easyaiot/AI/data/datasets/1/train_results\n[2025-08-30 13:15:18] 检查最佳模型文件是否存在: /projects/easyaiot/AI/data/datasets/1/train_results/weights/best.pt\n[2025-08-30 13:15:18] 找到最佳模型文件，开始复制到保存目录: /projects/easyaiot/AI/data/datasets/1/train_results/weights/best.pt\n[2025-08-30 13:15:18] 模型文件已成功复制到保存目录: /projects/easyaiot/AI/static/models/1/train/weights\n[2025-08-30 13:15:18] 开始上传最佳模型到Minio...\n[2025-08-30 13:15:24] 模型已成功上传至Minio: /api/v1/buckets/models/objects/download?prefix=models/model_1/train_20/best.pt\n[2025-08-30 13:15:25] 训练日志已上传至Minio: /api/v1/buckets/log-bucket/objects/download?prefix=logs/model_1/train_20.txt\n[2025-08-30 13:15:25] 模型训练完成并已保存\n	/projects/easyaiot/AI/data/datasets/1/train_results/checkpoints	/api/v1/buckets/model-train/objects/download?prefix=models/model_1/train_20/results.csv	/api/v1/buckets/models/objects/download?prefix=models/model_1/train_20/best.pt	/api/v1/buckets/model-train/objects/download?prefix=models/model_1/train_20/results.png
+COPY public.train_task (id, model_id, progress, dataset_path, hyperparameters, start_time, end_time, status, train_log, checkpoint_dir, metrics_path, minio_model_path, train_results_path, name, dataset_name, dataset_version) FROM stdin;
+6	1	10	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "model/yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 04:20:12.508389	\N	preparing	[2025-08-30 12:20:13] 开始准备训练数据，项目ID: 1\n[2025-08-30 12:20:13] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 12:20:14] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 12:20:14] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 12:20:14] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 12:20:14] 检查数据集配置文件...\n[2025-08-30 12:20:14] 加载预训练YOLOv8模型...\n[2025-08-30 12:20:14] 尝试加载预训练模型: /projects/easyaiot/AI/model/yolov8n.pt\n		\N	\N	\N	\N	\N	\N
+3	1	10	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "model/yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 04:09:03.61429	\N	preparing	[2025-08-30 12:09:04] 开始准备训练数据，项目ID: 1\n[2025-08-30 12:09:04] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 12:09:04] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 12:09:05] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 12:09:05] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 12:09:05] 检查数据集配置文件...\n[2025-08-30 12:09:05] 加载预训练YOLOv8模型...\n[2025-08-30 12:09:05] 尝试加载预训练模型: /projects/easyaiot/AI/model/yolov8n.pt\n		\N	\N	\N	\N	\N	\N
+2	1	10	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "model/yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 04:05:45.965389	\N	preparing	[2025-08-30 12:05:47] 开始准备训练数据，项目ID: 1\n[2025-08-30 12:05:47] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 12:05:47] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 12:05:47] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 12:05:47] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 12:05:47] 检查数据集配置文件...\n[2025-08-30 12:05:47] 加载预训练YOLOv8模型...\n[2025-08-30 12:05:47] 尝试加载预训练模型: /projects/easyaiot/AI/model/yolov8n.pt\n		\N	\N	\N	\N	\N	\N
+4	1	10	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "model/yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 04:14:05.135787	\N	preparing	[2025-08-30 12:14:06] 开始准备训练数据，项目ID: 1\n[2025-08-30 12:14:06] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 12:14:06] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 12:14:06] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 12:14:06] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 12:14:06] 检查数据集配置文件...\n[2025-08-30 12:14:06] 加载预训练YOLOv8模型...\n[2025-08-30 12:14:07] 尝试加载预训练模型: /projects/easyaiot/AI/model/yolov8n.pt\n		\N	\N	\N	\N	\N	\N
+1	1	10	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "model/yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 04:04:49.247897	\N	preparing	[2025-08-30 12:04:50] 开始准备训练数据，项目ID: 1\n[2025-08-30 12:04:50] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 12:04:50] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 12:04:50] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 12:04:50] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 12:04:50] 检查数据集配置文件...\n[2025-08-30 12:04:50] 加载预训练YOLOv8模型...\n[2025-08-30 12:04:51] 尝试加载预训练模型: /projects/easyaiot/AI/model/yolov8n.pt\n		\N	\N	\N	\N	\N	\N
+5	1	10	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "model/yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 04:17:50.939088	\N	preparing	[2025-08-30 12:17:52] 开始准备训练数据，项目ID: 1\n[2025-08-30 12:17:52] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 12:17:52] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 12:17:52] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 12:17:52] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 12:17:52] 检查数据集配置文件...\n[2025-08-30 12:17:52] 加载预训练YOLOv8模型...\n[2025-08-30 12:17:52] 尝试加载预训练模型: /projects/easyaiot/AI/model/yolov8n.pt\n		\N	\N	\N	\N	\N	\N
+7	1	10	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "model/yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 04:32:47.695145	\N	preparing	[2025-08-30 12:32:48] 开始准备训练数据，项目ID: 1\n[2025-08-30 12:32:48] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 12:32:48] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 12:32:49] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 12:32:49] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 12:32:49] 检查数据集配置文件...\n[2025-08-30 12:32:49] 加载预训练YOLOv8模型...\n[2025-08-30 12:32:49] 尝试加载预训练模型: /projects/easyaiot/AI/model/yolov8n.pt\n		\N	\N	\N	\N	\N	\N
+8	1	10	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "model/yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 04:36:01.576862	\N	error	[2025-08-30 12:36:27] 开始准备训练数据，项目ID: 1\n[2025-08-30 12:37:01] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 12:37:14] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 12:37:15] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 12:37:21] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 12:37:22] 检查数据集配置文件...\n[2025-08-30 12:37:53] 加载预训练YOLOv8模型...\n[2025-08-30 12:37:56] 尝试加载预训练模型: /projects/easyaiot/AI/model/yolov8n.pt\n[2025-08-30 12:38:08] 预训练模型加载失败: PytorchStreamReader failed reading zip archive: invalid header or archive is corrupted\n		\N	\N	\N	\N	\N	\N
+10	1	10	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "model/yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 04:43:39.87098	\N	error	[2025-08-30 12:43:40] 开始准备训练数据，项目ID: 1\n[2025-08-30 12:43:41] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 12:43:41] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 12:43:41] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 12:43:41] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 12:43:41] 检查数据集配置文件...\n[2025-08-30 12:43:41] 加载预训练YOLOv8模型...\n[2025-08-30 12:43:41] 尝试加载预训练模型: /projects/easyaiot/AI/model/yolov8n.pt\n[2025-08-30 12:43:41] 预训练模型加载失败: PytorchStreamReader failed reading zip archive: invalid header or archive is corrupted\n		\N	\N	\N	\N	\N	\N
+11	1	10	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "model/yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 04:50:11.207953	\N	preparing	[2025-08-30 12:50:12] 开始准备训练数据，项目ID: 1\n[2025-08-30 12:50:12] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 12:50:12] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 12:50:12] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 12:50:12] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 12:50:12] 检查数据集配置文件...\n[2025-08-30 12:50:13] 加载预训练YOLOv8模型...\n[2025-08-30 12:50:13] 尝试加载预训练模型: /projects/easyaiot/AI/model/yolov8n.pt\n		\N	\N	\N	\N	\N	\N
+12	1	10	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "model/yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 04:50:59.492811	\N	preparing	[2025-08-30 12:51:00] 开始准备训练数据，项目ID: 1\n[2025-08-30 12:51:00] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 12:51:00] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 12:51:00] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 12:51:01] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 12:51:01] 检查数据集配置文件...\n[2025-08-30 12:51:01] 加载预训练YOLOv8模型...\n[2025-08-30 12:51:01] 尝试加载预训练模型: /projects/easyaiot/AI/model/yolov8n.pt\n		\N	\N	\N	\N	\N	\N
+9	1	10	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "model/yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 04:42:51.803234	\N	error	[2025-08-30 12:42:57] 开始准备训练数据，项目ID: 1\n[2025-08-30 12:42:57] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 12:42:58] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 12:42:58] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 12:42:58] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 12:42:58] 检查数据集配置文件...\n[2025-08-30 12:42:58] 加载预训练YOLOv8模型...\n[2025-08-30 12:42:58] 尝试加载预训练模型: /projects/easyaiot/AI/model/yolov8n.pt\n[2025-08-30 12:43:01] 预训练模型文件不存在: /projects/easyaiot/AI/model/yolov8n.pt\n		\N	\N	\N	\N	\N	\N
+13	1	10	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "model/yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 04:52:34.809657	\N	error	[2025-08-30 12:52:35] 开始准备训练数据，项目ID: 1\n[2025-08-30 12:52:36] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 12:52:36] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 12:52:36] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 12:52:36] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 12:52:36] 检查数据集配置文件...\n[2025-08-30 12:52:36] 加载预训练YOLOv8模型...\n[2025-08-30 12:52:36] 尝试加载预训练模型: /projects/easyaiot/AI/model/yolov8n.pt\n[2025-08-30 12:52:36] 预训练模型加载失败: PytorchStreamReader failed reading zip archive: invalid header or archive is corrupted\n		\N	\N	\N	train_13	\N	\N
+14	1	10	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "model/yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 04:57:12.432184	\N	error	[2025-08-30 12:57:13] 开始准备训练数据，项目ID: 1\n[2025-08-30 12:57:13] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 12:57:13] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 12:57:13] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 12:57:14] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 12:57:14] 检查数据集配置文件...\n[2025-08-30 12:57:14] 加载预训练YOLOv8模型...\n[2025-08-30 12:57:14] 尝试加载预训练模型: /projects/easyaiot/AI/model/yolov8n.pt\n[2025-08-30 12:57:14] 预训练模型加载失败: PytorchStreamReader failed reading zip archive: invalid header or archive is corrupted\n		\N	\N	\N	train_14	\N	\N
+19	1	10	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "model/yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 05:12:51.929875	\N	preparing	[2025-08-30 13:12:53] 开始准备训练数据，项目ID: 1\n[2025-08-30 13:12:53] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 13:12:53] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 13:12:53] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 13:12:53] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 13:12:53] 检查数据集配置文件...\n[2025-08-30 13:12:53] 加载预训练YOLOv8模型...\n[2025-08-30 13:12:53] 尝试加载预训练模型: model/yolov8n.pt\n		\N	\N	\N	train_19	\N	\N
+15	1	15	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "model/yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 04:59:21.262579	\N	preparing	[2025-08-30 12:59:22] 开始准备训练数据，项目ID: 1\n[2025-08-30 12:59:22] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 12:59:22] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 12:59:22] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 12:59:22] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 12:59:22] 检查数据集配置文件...\n[2025-08-30 12:59:23] 加载预训练YOLOv8模型...\n[2025-08-30 12:59:23] 尝试加载预训练模型: /projects/easyaiot/AI/model/yolov8n.pt\n[2025-08-30 12:59:23] 预训练模型加载成功! 模型路径: /projects/easyaiot/AI/model/yolov8n.pt\n[2025-08-30 12:59:23] 开始训练模型，共100个epochs...\n[2025-08-30 12:59:23] 开始训练模型，配置: 数据文件=/projects/easyaiot/AI/data/datasets/1/data.yaml, epochs=100, 图像尺寸=640x640, 批次大小=16\n[2025-08-30 12:59:23] GPU状态检查: {\n  "pytorch_version": "2.0.1+cu117",\n  "cuda_available": true,\n  "cuda_version": "11.7",\n  "device_count": 1,\n  "device_0_name": "NVIDIA RTX A5000",\n  "device_0_capability": [\n    8,\n    6\n  ]\n}\n[2025-08-30 12:59:24] 使用GPU进行训练: NVIDIA RTX A5000\n	/projects/easyaiot/AI/data/datasets/1/train_results/checkpoints	\N	\N	\N	train_15	\N	\N
+16	1	15	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "model/yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 05:02:37.73719	\N	preparing	[2025-08-30 13:02:38] 开始准备训练数据，项目ID: 1\n[2025-08-30 13:02:38] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 13:02:39] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 13:02:39] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 13:02:39] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 13:02:39] 检查数据集配置文件...\n[2025-08-30 13:02:39] 加载预训练YOLOv8模型...\n[2025-08-30 13:02:39] 尝试加载预训练模型: /projects/easyaiot/AI/model/yolov8n.pt\n[2025-08-30 13:02:39] 预训练模型加载成功! 模型路径: /projects/easyaiot/AI/model/yolov8n.pt\n[2025-08-30 13:02:39] 开始训练模型，共100个epochs...\n[2025-08-30 13:02:40] 开始训练模型，配置: 数据文件=/projects/easyaiot/AI/data/datasets/1/data.yaml, epochs=100, 图像尺寸=640x640, 批次大小=16\n[2025-08-30 13:02:40] GPU状态检查: {\n  "pytorch_version": "2.0.1+cu117",\n  "cuda_available": true,\n  "cuda_version": "11.7",\n  "device_count": 1,\n  "device_0_name": "NVIDIA RTX A5000",\n  "device_0_capability": [\n    8,\n    6\n  ]\n}\n[2025-08-30 13:02:40] 使用GPU进行训练: NVIDIA RTX A5000\n	/projects/easyaiot/AI/data/datasets/1/train_results/checkpoints	\N	\N	\N	train_16	\N	\N
+17	1	100	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "model/yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 05:04:36.030287	2025-08-30 05:07:08.50721	completed	[2025-08-30 13:04:37] 开始准备训练数据，项目ID: 1\n[2025-08-30 13:04:37] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 13:04:37] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 13:04:37] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 13:04:37] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 13:04:37] 检查数据集配置文件...\n[2025-08-30 13:04:37] 加载预训练YOLOv8模型...\n[2025-08-30 13:04:37] 尝试加载预训练模型: /projects/easyaiot/AI/model/yolov8n.pt\n[2025-08-30 13:04:38] 预训练模型加载成功! 模型路径: /projects/easyaiot/AI/model/yolov8n.pt\n[2025-08-30 13:04:38] 开始训练模型，共100个epochs...\n[2025-08-30 13:04:38] 开始训练模型，配置: 数据文件=/projects/easyaiot/AI/data/datasets/1/data.yaml, epochs=100, 图像尺寸=640x640, 批次大小=16\n[2025-08-30 13:04:38] GPU状态检查: {\n  "pytorch_version": "2.0.1+cu117",\n  "cuda_available": true,\n  "cuda_version": "11.7",\n  "device_count": 1,\n  "device_0_name": "NVIDIA RTX A5000",\n  "device_0_capability": [\n    8,\n    6\n  ]\n}\n[2025-08-30 13:04:38] 使用GPU进行训练: NVIDIA RTX A5000\n[2025-08-30 13:06:59] 训练结果CSV已上传至Minio: /api/v1/buckets/model-train/objects/download?prefix=models/model_1/train_17/results.csv\n[2025-08-30 13:07:00] 训练结果图表已上传至Minio: /api/v1/buckets/model-train/objects/download?prefix=models/model_1/train_17/results.png\n[2025-08-30 13:07:00] 训练完成，正在保存结果...\n[2025-08-30 13:07:01] 模型训练完成!\n[2025-08-30 13:07:01] 训练结果保存路径: /projects/easyaiot/AI/data/datasets/1/train_results\n[2025-08-30 13:07:01] 检查最佳模型文件是否存在: /projects/easyaiot/AI/data/datasets/1/train_results/weights/best.pt\n[2025-08-30 13:07:01] 找到最佳模型文件，开始复制到保存目录: /projects/easyaiot/AI/data/datasets/1/train_results/weights/best.pt\n[2025-08-30 13:07:01] 模型文件已成功复制到保存目录: /projects/easyaiot/AI/static/models/1/train/weights\n[2025-08-30 13:07:01] 开始上传最佳模型到Minio...\n[2025-08-30 13:07:08] 模型已成功上传至Minio: /api/v1/buckets/models/objects/download?prefix=models/model_1/train_17/best.pt\n[2025-08-30 13:07:08] 训练日志已上传至Minio: /api/v1/buckets/log-bucket/objects/download?prefix=logs/model_1/train_17.txt\n[2025-08-30 13:07:08] 模型训练完成并已保存\n	/projects/easyaiot/AI/data/datasets/1/train_results/checkpoints	/api/v1/buckets/model-train/objects/download?prefix=models/model_1/train_17/results.csv	/api/v1/buckets/models/objects/download?prefix=models/model_1/train_17/best.pt	/api/v1/buckets/model-train/objects/download?prefix=models/model_1/train_17/results.png	train_17	\N	\N
+18	1	15	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "model/yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 05:09:31.896726	\N	preparing	[2025-08-30 13:09:33] 开始准备训练数据，项目ID: 1\n[2025-08-30 13:09:33] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 13:09:33] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 13:09:33] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 13:09:33] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 13:09:33] 检查数据集配置文件...\n[2025-08-30 13:09:33] 加载预训练YOLOv8模型...\n[2025-08-30 13:09:33] 尝试加载预训练模型: model/yolov8n.pt\n[2025-08-30 13:09:34] 预训练模型加载成功! 模型路径: model/yolov8n.pt\n[2025-08-30 13:09:34] 开始训练模型，共100个epochs...\n[2025-08-30 13:09:34] 开始训练模型，配置: 数据文件=/projects/easyaiot/AI/data/datasets/1/data.yaml, epochs=100, 图像尺寸=640x640, 批次大小=16\n[2025-08-30 13:09:34] GPU状态检查: {\n  "pytorch_version": "2.0.1+cu117",\n  "cuda_available": true,\n  "cuda_version": "11.7",\n  "device_count": 1,\n  "device_0_name": "NVIDIA RTX A5000",\n  "device_0_capability": [\n    8,\n    6\n  ]\n}\n[2025-08-30 13:09:34] 使用GPU进行训练: NVIDIA RTX A5000\n	/projects/easyaiot/AI/data/datasets/1/train_results/checkpoints	\N	\N	\N	train_18	\N	\N
+20	1	100	/api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip	{"epochs": 100, "model_arch": "yolov8n.pt", "img_size": 640, "batch_size": 16, "use_gpu": true}	2025-08-30 05:13:49.213499	2025-08-30 05:15:25.148511	completed	[2025-08-30 13:13:50] 开始准备训练数据，项目ID: 1\n[2025-08-30 13:13:50] 获取项目信息成功，项目名称: 人模型\n[2025-08-30 13:13:50] 数据集验证成功，使用原始路径: /api/v1/buckets/datasets/objects/download?prefix=dataset-3.zip\n[2025-08-30 13:13:50] 项目目录: /projects/easyaiot/AI/data/datasets/1\n[2025-08-30 13:13:50] 数据配置文件路径: /projects/easyaiot/AI/data/datasets/1/data.yaml\n[2025-08-30 13:13:50] 检查数据集配置文件...\n[2025-08-30 13:13:51] 加载预训练YOLOv8模型...\n[2025-08-30 13:13:51] 尝试加载预训练模型: yolov8n.pt\n[2025-08-30 13:13:51] 预训练模型加载成功!\n[2025-08-30 13:13:51] 开始训练模型，共100个epochs...\n[2025-08-30 13:13:51] 开始训练模型，配置: 数据文件=/projects/easyaiot/AI/data/datasets/1/data.yaml, epochs=100, 图像尺寸=640x640, 批次大小=16\n[2025-08-30 13:13:51] GPU状态检查: {\n  "pytorch_version": "2.0.1+cu117",\n  "cuda_available": true,\n  "cuda_version": "11.7",\n  "device_count": 1,\n  "device_0_name": "NVIDIA RTX A5000",\n  "device_0_capability": [\n    8,\n    6\n  ]\n}\n[2025-08-30 13:13:52] 使用GPU进行训练: NVIDIA RTX A5000\n[2025-08-30 13:15:16] 训练结果CSV已上传至Minio: /api/v1/buckets/model-train/objects/download?prefix=models/model_1/train_20/results.csv\n[2025-08-30 13:15:17] 训练结果图表已上传至Minio: /api/v1/buckets/model-train/objects/download?prefix=models/model_1/train_20/results.png\n[2025-08-30 13:15:17] 训练完成，正在保存结果...\n[2025-08-30 13:15:18] 模型训练完成!\n[2025-08-30 13:15:18] 训练结果保存路径: /projects/easyaiot/AI/data/datasets/1/train_results\n[2025-08-30 13:15:18] 检查最佳模型文件是否存在: /projects/easyaiot/AI/data/datasets/1/train_results/weights/best.pt\n[2025-08-30 13:15:18] 找到最佳模型文件，开始复制到保存目录: /projects/easyaiot/AI/data/datasets/1/train_results/weights/best.pt\n[2025-08-30 13:15:18] 模型文件已成功复制到保存目录: /projects/easyaiot/AI/static/models/1/train/weights\n[2025-08-30 13:15:18] 开始上传最佳模型到Minio...\n[2025-08-30 13:15:24] 模型已成功上传至Minio: /api/v1/buckets/models/objects/download?prefix=models/model_1/train_20/best.pt\n[2025-08-30 13:15:25] 训练日志已上传至Minio: /api/v1/buckets/log-bucket/objects/download?prefix=logs/model_1/train_20.txt\n[2025-08-30 13:15:25] 模型训练完成并已保存\n	/projects/easyaiot/AI/data/datasets/1/train_results/checkpoints	/api/v1/buckets/model-train/objects/download?prefix=models/model_1/train_20/results.csv	/api/v1/buckets/models/objects/download?prefix=models/model_1/train_20/best.pt	/api/v1/buckets/model-train/objects/download?prefix=models/model_1/train_20/results.png	train_20	\N	\N
 \.
 
 
@@ -705,6 +1176,20 @@ COPY public.train_task (id, model_id, progress, dataset_path, hyperparameters, s
 --
 
 SELECT pg_catalog.setval('public.ai_service_id_seq', 3, true);
+
+
+--
+-- Name: auto_label_result_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('public.auto_label_result_id_seq', 1, false);
+
+
+--
+-- Name: auto_label_task_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('public.auto_label_task_id_seq', 1, false);
 
 
 --
@@ -732,7 +1217,7 @@ SELECT pg_catalog.setval('public.llm_config_id_seq', 3, true);
 -- Name: model_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public.model_id_seq', 8, true);
+SELECT pg_catalog.setval('public.model_id_seq', 14, true);
 
 
 --
@@ -740,6 +1225,34 @@ SELECT pg_catalog.setval('public.model_id_seq', 8, true);
 --
 
 SELECT pg_catalog.setval('public.ocr_result_id_seq', 1, false);
+
+
+--
+-- Name: plate_algorithm_version_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('public.plate_algorithm_version_id_seq', 1, false);
+
+
+--
+-- Name: plate_dataset_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('public.plate_dataset_id_seq', 1, false);
+
+
+--
+-- Name: plate_inference_task_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('public.plate_inference_task_id_seq', 1, false);
+
+
+--
+-- Name: plate_train_task_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('public.plate_train_task_id_seq', 1, false);
 
 
 --
@@ -762,6 +1275,22 @@ SELECT pg_catalog.setval('public.train_task_id_seq', 20, true);
 
 ALTER TABLE ONLY public.ai_service
     ADD CONSTRAINT ai_service_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: auto_label_result auto_label_result_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.auto_label_result
+    ADD CONSTRAINT auto_label_result_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: auto_label_task auto_label_task_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.auto_label_task
+    ADD CONSTRAINT auto_label_task_pkey PRIMARY KEY (id);
 
 
 --
@@ -813,6 +1342,38 @@ ALTER TABLE ONLY public.ocr_result
 
 
 --
+-- Name: plate_algorithm_version plate_algorithm_version_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.plate_algorithm_version
+    ADD CONSTRAINT plate_algorithm_version_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: plate_dataset plate_dataset_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.plate_dataset
+    ADD CONSTRAINT plate_dataset_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: plate_inference_task plate_inference_task_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.plate_inference_task
+    ADD CONSTRAINT plate_inference_task_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: plate_train_task plate_train_task_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.plate_train_task
+    ADD CONSTRAINT plate_train_task_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: speech_record speech_record_order_id_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -837,11 +1398,41 @@ ALTER TABLE ONLY public.train_task
 
 
 --
+-- Name: ix_plate_algorithm_version_version; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX ix_plate_algorithm_version_version ON public.plate_algorithm_version USING btree (version);
+
+
+--
+-- Name: ix_plate_dataset_name; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX ix_plate_dataset_name ON public.plate_dataset USING btree (name);
+
+
+--
 -- Name: ai_service ai_service_model_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.ai_service
     ADD CONSTRAINT ai_service_model_id_fkey FOREIGN KEY (model_id) REFERENCES public.model(id);
+
+
+--
+-- Name: auto_label_result auto_label_result_task_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.auto_label_result
+    ADD CONSTRAINT auto_label_result_task_id_fkey FOREIGN KEY (task_id) REFERENCES public.auto_label_task(id);
+
+
+--
+-- Name: auto_label_task auto_label_task_model_service_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.auto_label_task
+    ADD CONSTRAINT auto_label_task_model_service_id_fkey FOREIGN KEY (model_service_id) REFERENCES public.ai_service(id);
 
 
 --
@@ -861,6 +1452,22 @@ ALTER TABLE ONLY public.inference_task
 
 
 --
+-- Name: plate_inference_task plate_inference_task_version_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.plate_inference_task
+    ADD CONSTRAINT plate_inference_task_version_id_fkey FOREIGN KEY (version_id) REFERENCES public.plate_algorithm_version(id);
+
+
+--
+-- Name: plate_train_task plate_train_task_version_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.plate_train_task
+    ADD CONSTRAINT plate_train_task_version_id_fkey FOREIGN KEY (version_id) REFERENCES public.plate_algorithm_version(id);
+
+
+--
 -- Name: train_task train_task_model_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -872,5 +1479,5 @@ ALTER TABLE ONLY public.train_task
 -- PostgreSQL database dump complete
 --
 
-\unrestrict mxtmdLkbhrjgyaTtpEH6lt2YtwvBCQuZm7tbmtH99rJSDMhUQwZ0Ba1AQPtTBUP
+\unrestrict MwGZKj5ImbR8TLVJkCcg25ROS2FqE0qKmSwbEq38NTTPLZXUMGplI4I5KENDdwZ
 
