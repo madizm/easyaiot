@@ -207,6 +207,9 @@ def create_app():
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['TIMEZONE'] = 'Asia/Shanghai'
+    # 训练任务本地数据集 zip 上传（默认 500MB，可通过环境变量覆盖）
+    max_upload_mb = int(os.getenv('TRAIN_DATASET_MAX_UPLOAD_MB', '5120'))
+    app.config['MAX_CONTENT_LENGTH'] = max_upload_mb * 1024 * 1024
     
     # 配置 Flask URL 生成（用于在异步任务中使用 url_for）
     # 从环境变量获取配置，如果没有则从运行参数推断

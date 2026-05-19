@@ -4,6 +4,10 @@ const Api = {
   TrainTask: '/model/train_task',
 };
 
+const buildAuthHeader = () => ({
+  'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token'),
+});
+
 const commonApi = (
   method: 'get' | 'post' | 'delete' | 'put',
   url: string,
@@ -11,7 +15,7 @@ const commonApi = (
   headers: Record<string, string> = {},
   isTransformResponse = true,
 ) => {
-  const authHeader = {'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token')};
+  const authHeader = buildAuthHeader();
 
   return defHttp[method](
     {
@@ -54,4 +58,24 @@ export const getTrainStatus = (taskId: number) => {
 
 export const getTrainLogs = (taskId: number) => {
   return commonApi('get', `${Api.TrainTask}/${taskId}/logs`);
+};
+
+export const getTrainGpuStatus = () => {
+  return commonApi('get', `${Api.TrainTask}/gpu/status`);
+};
+
+/** 上传本地 YOLO 数据集 zip，返回服务端路径供训练使用 */
+export const uploadTrainDataset = (formData: FormData) => {
+  return defHttp.post(
+    {
+      url: `${Api.TrainTask}/dataset/upload`,
+      data: formData,
+      timeout: 60 * 60 * 1000,
+      headers: buildAuthHeader(),
+    },
+    {
+      isTransformResponse: true,
+      successMessageMode: 'none',
+    },
+  );
 };

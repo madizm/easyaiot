@@ -155,10 +155,23 @@ def _lookup_dataset_info(dataset_map: dict, dataset_path: str):
     return None
 
 
+def _is_local_filesystem_dataset_path(dataset_path: str) -> bool:
+    """已落盘的本地 zip/目录，不应再用云端数据集映射覆盖名称。"""
+    if not dataset_path:
+        return False
+    if dataset_path.startswith('/api/v1/buckets/'):
+        return False
+    if '://' in dataset_path and not dataset_path.startswith('file://'):
+        return False
+    return os.path.exists(dataset_path)
+
+
 def _enrich_task_metadata(task: TrainTask, dataset_map: dict) -> bool:
     """补全缺失的数据集字段与任务名，返回是否有字段变更。"""
     changed = False
-    info = _lookup_dataset_info(dataset_map, task.dataset_path)
+    info = None
+    if not _is_local_filesystem_dataset_path(task.dataset_path):
+        info = _lookup_dataset_info(dataset_map, task.dataset_path)
     if info:
         if not task.dataset_name and info.get('name'):
             task.dataset_name = info['name']

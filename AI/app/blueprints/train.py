@@ -8,6 +8,7 @@ import os
 import shutil
 import threading
 import traceback
+import uuid
 from datetime import datetime
 from urllib.parse import urlparse, parse_qs
 
@@ -17,9 +18,18 @@ from ultralytics import YOLO
 
 from app.blueprints.train_task import build_train_task_name, resolve_task_base_name
 from app.services.minio_service import ModelService
+from app.utils.gpu_utils import (
+    check_gpu_status,
+    format_device_for_log,
+    normalize_request_gpu_ids,
+    resolve_yolo_train_device,
+)
 from db_models import db, TrainTask
 
 train_bp = Blueprint('train', __name__)
+
+# 本地数据集 zip 上传上限（与前端一致，5GB）
+MAX_LOCAL_DATASET_UPLOAD_BYTES = 5 * 1024 * 1024 * 1024
 
 # 全局训练状态和进程
 train_status = {}
@@ -33,16 +43,202 @@ def _build_train_hyperparameters(
     batch_size,
     use_gpu,
     task_base_name,
+    gpu_ids=None,
+    dataset_source=None,
 ):
     base = (task_base_name or 'train').strip() or 'train'
-    return json.dumps({
+    hp = {
         'epochs': epochs,
         'model_arch': model_arch,
         'img_size': img_size,
         'batch_size': batch_size,
         'use_gpu': use_gpu,
         'task_base_name': base,
-    })
+        'dataset_source': _normalize_dataset_source(dataset_source),
+    }
+    if gpu_ids is not None:
+        hp['gpu_ids'] = gpu_ids
+    return json.dumps(hp)
+
+
+def _normalize_dataset_source(value) -> str:
+    source = (value or 'local').strip().lower()
+    return source if source in ('local', 'cloud') else 'local'
+
+
+def _is_cloud_dataset_path(dataset_path: str) -> bool:
+    if not dataset_path:
+        return False
+    if dataset_path.startswith('/api/v1/buckets/'):
+        return True
+    return '://' in dataset_path and not dataset_path.startswith('file://')
+
+
+def _prepare_train_dataset_in_dir(dataset_path: str, model_dir: str, log_fn):
+    """将本地路径/zip 或云端 MinIO 数据集准备到 model_dir。"""
+    os.makedirs(model_dir, exist_ok=True)
+
+    if not _is_cloud_dataset_path(dataset_path):
+        if not os.path.exists(dataset_path):
+            raise RuntimeError(f'本地数据集不存在: {dataset_path}')
+        source_abs = os.path.abspath(dataset_path)
+        if os.path.isdir(source_abs):
+            data_yaml = os.path.join(source_abs, 'data.yaml')
+            if not os.path.exists(data_yaml):
+                raise RuntimeError(f'本地数据集目录缺少 data.yaml: {source_abs}')
+            if source_abs != os.path.abspath(model_dir):
+                for name in os.listdir(source_abs):
+                    src = os.path.join(source_abs, name)
+                    dst = os.path.join(model_dir, name)
+                    if os.path.isdir(src):
+                        shutil.copytree(src, dst, dirs_exist_ok=True)
+                    else:
+                        shutil.copy2(src, dst)
+            log_fn(f'已使用本地数据集目录: {source_abs}')
+            return
+        if source_abs.lower().endswith('.zip'):
+            log_fn(f'正在解压本地数据集: {source_abs}')
+            if not ModelService.extract_zip(source_abs, model_dir):
+                raise RuntimeError(f'本地数据集 zip 解压失败: {source_abs}')
+            log_fn('本地数据集解压成功')
+            return
+        raise RuntimeError('本地数据集路径仅支持目录或 zip 文件')
+
+    parsed_url = urlparse(dataset_path)
+    query_params = parse_qs(parsed_url.query)
+    object_key = query_params.get('prefix', [None])[0]
+    path_parts = parsed_url.path.split('/')
+    if len(path_parts) >= 5 and path_parts[3] == 'buckets':
+        bucket_name = path_parts[4]
+    else:
+        bucket_name = 'datasets'
+
+    local_zip_path = os.path.join(model_dir, 'dataset.zip')
+    log_fn(f'从 MinIO 下载数据集: bucket={bucket_name}, object={object_key}')
+    success, error_msg = ModelService.download_from_minio(
+        bucket_name=bucket_name,
+        object_name=object_key,
+        destination_path=local_zip_path,
+    )
+    if not success:
+        raise RuntimeError(f'数据集下载失败: {error_msg or "未知错误"}')
+    log_fn('数据集下载成功，开始解压...')
+    if not ModelService.extract_zip(local_zip_path, model_dir):
+        raise RuntimeError('数据集解压失败')
+    if os.path.exists(local_zip_path):
+        os.remove(local_zip_path)
+    log_fn('云端数据集解压成功')
+
+
+def _is_uploaded_dataset_zip(path: str) -> bool:
+    if not path or not os.path.isfile(path):
+        return False
+    uploads_root = os.path.join(get_project_root(), 'data', 'datasets', 'uploads')
+    try:
+        return os.path.commonpath([
+            os.path.abspath(path),
+            os.path.abspath(uploads_root),
+        ]) == os.path.abspath(uploads_root)
+    except ValueError:
+        return False
+
+
+def _cleanup_train_dataset_artifacts(model_dir, dataset_zip_path, log_fn=None):
+    """训练结束后删除本地数据集文件，保留 train_results 与已导出的权重。"""
+    def _log(msg):
+        if log_fn:
+            log_fn(msg)
+
+    freed = []
+
+    if dataset_zip_path and _is_uploaded_dataset_zip(dataset_zip_path):
+        try:
+            os.remove(dataset_zip_path)
+            freed.append(f'上传压缩包: {dataset_zip_path}')
+        except OSError as e:
+            _log(f'删除上传压缩包失败: {e}')
+
+    if not model_dir or not os.path.isdir(model_dir):
+        if freed:
+            _log(f'已清理训练数据集: {"; ".join(freed)}')
+        return
+
+    train_results_dir = os.path.join(model_dir, 'train_results')
+    for name in ('images', 'labels'):
+        target = os.path.join(model_dir, name)
+        if os.path.isdir(target):
+            try:
+                shutil.rmtree(target)
+                freed.append(name + '/')
+            except OSError as e:
+                _log(f'删除 {name}/ 失败: {e}')
+
+    for name in ('data.yaml', 'dataset.zip'):
+        target = os.path.join(model_dir, name)
+        if os.path.isfile(target):
+            try:
+                os.remove(target)
+                freed.append(name)
+            except OSError as e:
+                _log(f'删除 {name} 失败: {e}')
+
+    # 清理 train_results 内可能残留的中间缓存，保留 weights 与结果文件
+    if os.path.isdir(train_results_dir):
+        for sub in ('images', 'labels'):
+            target = os.path.join(train_results_dir, sub)
+            if os.path.isdir(target):
+                try:
+                    shutil.rmtree(target)
+                    freed.append(f'train_results/{sub}/')
+                except OSError:
+                    pass
+
+    if freed:
+        _log(f'已清理训练数据集以释放磁盘: {", ".join(freed)}')
+    else:
+        _log('未发现需清理的本地数据集文件')
+
+
+@train_bp.route('/dataset/upload', methods=['POST'])
+def api_upload_train_dataset():
+    """上传本地 YOLO 数据集压缩包（zip），供训练使用。"""
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'code': 400, 'msg': '未找到文件'}), 400
+
+    file = request.files['file']
+    if not file.filename:
+        return jsonify({'success': False, 'code': 400, 'msg': '未选择文件'}), 400
+
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext != '.zip':
+        return jsonify({'success': False, 'code': 400, 'msg': '仅支持 ZIP 格式数据集'}), 400
+
+    file.seek(0, os.SEEK_END)
+    file_size = file.tell()
+    file.seek(0)
+    if file_size > MAX_LOCAL_DATASET_UPLOAD_BYTES:
+        return jsonify({
+            'success': False,
+            'code': 400,
+            'msg': '数据集压缩包不能超过 5GB',
+        }), 400
+
+    upload_dir = os.path.join(get_project_root(), 'data', 'datasets', 'uploads')
+    os.makedirs(upload_dir, exist_ok=True)
+    unique_name = f'{uuid.uuid4().hex}.zip'
+    local_path = os.path.join(upload_dir, unique_name)
+    file.save(local_path)
+
+    return jsonify({
+        'success': True,
+        'code': 0,
+        'msg': '上传成功',
+        'data': {
+            'path': local_path,
+            'fileName': file.filename,
+        },
+    }), 200
+
 
 @train_bp.route('/start', methods=['POST'])
 def api_start_train():
@@ -58,14 +254,24 @@ def api_start_train():
         batch_size = data.get('batch_size', 16)
         img_size = data.get('imgsz', 640)
         model_arch = data.get('modelPath', 'yolov8n.pt')
-        dataset_url = data.get('datasetPath')
+        dataset_url = data.get('datasetPath') or data.get('dataset_path')
         dataset_zip_path = dataset_url
+        dataset_source = _normalize_dataset_source(
+            data.get('datasetSource') or data.get('dataset_source')
+        )
+        if dataset_source == 'local' and dataset_zip_path and _is_cloud_dataset_path(dataset_zip_path):
+            dataset_source = 'cloud'
+        elif dataset_source == 'cloud' and dataset_zip_path and not _is_cloud_dataset_path(dataset_zip_path):
+            dataset_source = 'local'
         dataset_name = (data.get('datasetName') or data.get('dataset_name') or '').strip() or None
         dataset_version = (data.get('datasetVersion') or data.get('dataset_version') or '').strip() or None
         use_gpu = data.get('use_gpu', True)
+        request_gpu_ids = normalize_request_gpu_ids(data.get('gpu_ids'))
 
         if not dataset_zip_path:
             return jsonify({'success': False, 'code': 400, 'msg': '缺少数据集路径'}), 400
+        if dataset_source == 'local' and not os.path.exists(dataset_zip_path):
+            return jsonify({'success': False, 'code': 400, 'msg': '本地数据集文件不存在，请重新上传'}), 400
 
         if record_id:
             train_task = TrainTask.query.get(record_id)
@@ -83,7 +289,8 @@ def api_start_train():
                 train_task.train_log = ''
                 train_task.progress = 0
                 train_task.hyperparameters = _build_train_hyperparameters(
-                    epochs, model_arch, img_size, batch_size, use_gpu, task_base_name
+                    epochs, model_arch, img_size, batch_size, use_gpu, task_base_name,
+                    request_gpu_ids, dataset_source,
                 )
                 train_task.name = build_train_task_name(
                     task_base_name,
@@ -102,7 +309,8 @@ def api_start_train():
                 dataset_name=dataset_name,
                 dataset_version=dataset_version,
                 hyperparameters=_build_train_hyperparameters(
-                    epochs, model_arch, img_size, batch_size, use_gpu, task_base_name
+                    epochs, model_arch, img_size, batch_size, use_gpu, task_base_name,
+                    request_gpu_ids, dataset_source,
                 ),
                 start_time=datetime.utcnow(),
                 status='preparing',
@@ -132,7 +340,7 @@ def api_start_train():
         train_thread = threading.Thread(
             target=train_model,
             args=(task_id, epochs, model_arch, img_size, batch_size,
-                  use_gpu, dataset_zip_path, train_task.id)
+                  use_gpu, dataset_zip_path, train_task.id, request_gpu_ids, dataset_source)
         )
         train_thread.daemon = True
         train_thread.start()
@@ -260,6 +468,17 @@ def api_train_status(task_id):
     return jsonify({'status': status, 'code': 0, 'msg': 'success'}), 200
 
 
+@train_bp.route('/gpu/status', methods=['GET'])
+def api_gpu_status():
+    """查询当前环境可见 GPU（与算法任务多卡探测逻辑一致）。"""
+    return jsonify({
+        'success': True,
+        'code': 0,
+        'msg': 'success',
+        'data': check_gpu_status(),
+    }), 200
+
+
 @train_bp.route('/<int:task_id>/logs')
 def api_train_log(task_id):
     """训练日志轮询接口，先返回内存中的日志数据，如果为空则查询数据库"""
@@ -306,10 +525,14 @@ def update_log(message, task_id=None, progress=None, train_task=None):
 
 def train_model(task_id, epochs=20, model_arch='yolov8n.pt',
                 img_size=640, batch_size=16, use_gpu=True,
-                dataset_zip_path=None, record_id=None):
+                dataset_zip_path=None, record_id=None, gpu_ids=None,
+                dataset_source='local'):
     """增强版训练函数，集成数据集下载和解压功能"""
     update_log(f"训练函数被调用，任务ID: {task_id}", task_id)
     train_task = None
+    model_dir_for_cleanup = None
+    dataset_path_for_cleanup = dataset_zip_path
+    dataset_cleaned = False
 
     try:
         from run import create_app
@@ -350,6 +573,8 @@ def train_model(task_id, epochs=20, model_arch='yolov8n.pt',
             # └── data.yaml
             # 检查数据集目录是否存在
             model_dir = os.path.join(get_project_root(), 'data/datasets', f'train_{task_id}')
+            model_dir_for_cleanup = model_dir
+            dataset_path_for_cleanup = dataset_zip_path
             data_yaml_path = os.path.join(model_dir, 'data.yaml')
 
             # 检查数据集目录结构完整性
@@ -364,58 +589,24 @@ def train_model(task_id, epochs=20, model_arch='yolov8n.pt',
             update_log_local(f"数据配置文件路径: {data_yaml_path}")
             update_log_local("检查数据集配置文件...")
 
-            # 数据集不存在处理逻辑
-            dataset_downloaded = False
             if not os.path.exists(data_yaml_path):
-                log_msg = '数据集配置文件不存在，正在尝试从Minio下载数据集...'
+                source_label = '本地' if dataset_source == 'local' else '云端'
+                log_msg = f'数据集配置文件不存在，正在准备{source_label}数据集...'
                 train_status[task_id].update({
-                    'message': '正在下载数据集...',
+                    'message': '正在准备数据集...',
                     'progress': 5
                 })
                 update_log_local(log_msg, progress=5)
 
-                # 确保数据集目录存在
-                os.makedirs(model_dir, exist_ok=True)
-
-                # 从Minio下载数据集
                 if dataset_zip_path:
-                    # 解析URL获取bucket和object信息
-                    parsed_url = urlparse(dataset_zip_path)
-                    query_params = parse_qs(parsed_url.query)
-                    object_key = query_params.get('prefix', [None])[0]
-
-                    # 从路径中提取bucket名称（关键修复）
-                    path_parts = parsed_url.path.split('/')
-                    if len(path_parts) >= 5 and path_parts[3] == 'buckets':
-                        bucket_name = path_parts[4]  # /api/v1/buckets/<bucket_name>/objects...
-                    else:
-                        bucket_name = "datasets"  # 默认值
-
-                    # 本地压缩包路径
-                    local_zip_path = os.path.join(model_dir, 'dataset.zip')
-
-                    # Minio下载（使用解析出的bucket和object）
-                    update_log_local(f"从Minio下载数据集: bucket={bucket_name}, object={object_key}")
-                    success, error_msg = ModelService.download_from_minio(
-                            bucket_name=bucket_name,  # 使用解析出的bucket
-                            object_name=object_key,  # 使用prefix参数值
-                            destination_path=local_zip_path
-                    )
-                    if success:
-                        update_log_local("数据集下载成功，开始解压...")
-
-                        # 解压数据集
-                        if ModelService.extract_zip(local_zip_path, model_dir):
-                            update_log_local("数据集解压成功")
-                            # 删除压缩包释放空间
-                            os.remove(local_zip_path)
-                            update_log_local("已清理临时压缩文件")
-                        else:
-                            update_log_local("数据集解压失败")
-                    else:
-                        update_log_local("数据集下载失败")
+                    try:
+                        _prepare_train_dataset_in_dir(
+                            dataset_zip_path, model_dir, update_log_local
+                        )
+                    except Exception as prep_err:
+                        update_log_local(f'数据集准备失败: {prep_err}')
                 else:
-                    update_log_local("未提供数据集Minio路径，无法下载")
+                    update_log_local('未提供数据集路径，无法准备训练数据')
 
             # 检查是否应该停止训练
             if train_status.get(task_id, {}).get('stop_requested'):
@@ -482,24 +673,38 @@ def train_model(task_id, epochs=20, model_arch='yolov8n.pt',
             update_log_local(
                 f"开始训练模型，配置: 数据文件={data_yaml_path}, epochs={epochs}, 图像尺寸={img_size}x{img_size}, 批次大小={batch_size}")
 
-            # 在训练函数开始处添加GPU状态检查
             gpu_status = check_gpu_status()
-            update_log_local(f"GPU状态检查: {json.dumps(gpu_status, indent=2)}")
+            update_log_local(f"GPU状态检查: {json.dumps(gpu_status, indent=2, ensure_ascii=False)}")
 
-            # 确定训练设备
-            if use_gpu:
-                if torch.cuda.is_available():
-                    device = 0
-                    update_log_local(f"使用GPU进行训练: {torch.cuda.get_device_name(0)}")
-                else:
-                    device = 'cpu'
-                    update_log_local("警告: 请求使用GPU，但CUDA不可用。使用CPU进行训练。")
-                    # 记录详细原因
+            device = resolve_yolo_train_device(use_gpu, gpu_ids)
+            if device == 'cpu':
+                if use_gpu:
+                    update_log_local("警告: 请求使用GPU，但当前无可用 CUDA 设备，回退到 CPU 训练。")
                     update_log_local(
-                        f"可能的原因: PyTorch版本={torch.__version__}, CUDA编译版本={getattr(torch.version, 'cuda', '未知')}")
+                        f"可能的原因: USE_GPU={gpu_status.get('use_gpu_env')}, "
+                        f"PyTorch={torch.__version__}, CUDA={getattr(torch.version, 'cuda', '未知')}")
+                else:
+                    update_log_local("使用 CPU 进行训练")
+            elif isinstance(device, list):
+                names = []
+                for idx in device:
+                    try:
+                        names.append(f"GPU{idx}({torch.cuda.get_device_name(idx)})")
+                    except Exception:
+                        names.append(f"GPU{idx}")
+                update_log_local(
+                    f"多卡并行训练 (DDP): {len(device)} 张 GPU [{format_device_for_log(device)}] — "
+                    + ', '.join(names)
+                )
+                update_log_local(
+                    f"提示: batch_size={batch_size} 为每张 GPU 的批次大小，有效总 batch≈{batch_size * len(device)}"
+                )
             else:
-                device = 'cpu'
-                update_log_local("使用CPU进行训练")
+                try:
+                    gpu_name = torch.cuda.get_device_name(device)
+                except Exception:
+                    gpu_name = 'unknown'
+                update_log_local(f"单卡 GPU 训练: GPU{device} ({gpu_name})")
 
             # 设置检查点目录
             checkpoint_dir = os.path.join(model_dir, 'train_results', 'checkpoints')
@@ -668,6 +873,11 @@ def train_model(task_id, epochs=20, model_arch='yolov8n.pt',
             db.session.commit()
             update_log_local("模型训练完成并已保存", progress=100)
 
+            _cleanup_train_dataset_artifacts(
+                model_dir, dataset_zip_path, update_log_local
+            )
+            dataset_cleaned = True
+
     except Exception as e:
         from run import create_app
         application = create_app()
@@ -698,21 +908,20 @@ def train_model(task_id, epochs=20, model_arch='yolov8n.pt',
     finally:
         if task_id in train_processes:
             del train_processes[task_id]
+        # 异常/停止时清理已解压的数据集，避免占用磁盘
+        if not dataset_cleaned and model_dir_for_cleanup:
+            terminal = train_status.get(task_id, {}).get('status')
+            if terminal in ('error', 'stopped'):
+                ds_path = dataset_path_for_cleanup
+                if train_task and train_task.dataset_path:
+                    ds_path = train_task.dataset_path
 
+                def _log_cleanup(msg):
+                    update_log(msg, task_id, train_task=train_task)
 
-def check_gpu_status():
-    """检查并记录GPU状态"""
-    import torch
-    status = {
-        'pytorch_version': torch.__version__,
-        'cuda_available': torch.cuda.is_available(),
-        'cuda_version': torch.version.cuda if hasattr(torch.version, 'cuda') else '未知',
-        'device_count': torch.cuda.device_count() if torch.cuda.is_available() else 0,
-    }
-
-    if torch.cuda.is_available():
-        for i in range(torch.cuda.device_count()):
-            status[f'device_{i}_name'] = torch.cuda.get_device_name(i)
-            status[f'device_{i}_capability'] = torch.cuda.get_device_capability(i)
-
-    return status
+                try:
+                    _cleanup_train_dataset_artifacts(
+                        model_dir_for_cleanup, ds_path, _log_cleanup
+                    )
+                except Exception:
+                    pass

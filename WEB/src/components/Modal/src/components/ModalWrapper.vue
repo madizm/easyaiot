@@ -47,10 +47,21 @@ createModalContext({
   redoModalHeight: setModalHeight,
 })
 
+const scrollStyle = computed((): CSSProperties => {
+  const h = unref(realHeightRef)
+  if (!h || props.fullScreen)
+    return {}
+  return { height: `${h}px` }
+})
+
 const spinStyle = computed((): CSSProperties => {
+  const h = unref(realHeightRef)
+  const minH = props.fullScreen
+    ? props.minHeight
+    : Math.min(props.minHeight, h || props.minHeight)
   return {
-    minHeight: `${props.minHeight}px`,
-    [props.fullScreen ? 'height' : 'maxHeight']: `${unref(realHeightRef)}px`,
+    minHeight: `${minH}px`,
+    ...(props.fullScreen ? { height: `${h}px` } : {}),
   }
 })
 
@@ -142,7 +153,7 @@ defineExpose({ scrollTop })
 </script>
 
 <template>
-  <ScrollContainer ref="wrapperRef" :scroll-height="realHeight">
+  <ScrollContainer ref="wrapperRef" :scroll-height="realHeight" :style="scrollStyle">
     <div ref="spinRef" v-loading="loading" :style="spinStyle" :loading-tip="loadingTip">
       <slot />
     </div>
