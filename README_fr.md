@@ -689,7 +689,7 @@ Voici les contributeurs exceptionnels qui ont apporté une contribution signific
 
 ## 🏆 Meilleurs praticiens
 
-Ce sont les pionniers qui font passer EasyAIoT de « utilisable » à « facile à utiliser et bien utilisé » — les personnes suivantes ont déployé le projet EasyAIoT ou mis en œuvre des scénarios métier. Leurs explorations et réalisations constituent des références reproductibles pour la communauté. Nous leur adressons notre plus profond respect et nos félicitations les plus sincères ! Affichés par ordre chronologique de mise en pratique :
+Ce sont les pionniers qui font passer EasyAIoT de « utilisable » à « facile à utiliser et bien utilisé » — les personnes suivantes ont déployé le projet EasyAIoT ou mis en œuvre des scénarios métier. Leurs explorations et réalisations constituent des références reproductibles pour la communauté. Nous leur adressons notre plus profond respect et nos félicitations les plus sincères ! L'ordre ci-dessous n'est pas hiérarchique :
 
 <table>
   <tbody>

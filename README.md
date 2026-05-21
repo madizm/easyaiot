@@ -654,7 +654,7 @@ The following are outstanding contributors who have made significant contributio
 
 ## 🏆 Best Practitioners
 
-They are the pioneers who push EasyAIoT from "usable" to "easy to use and use well" — the following individuals have completed EasyAIoT project deployment or business scenario implementation. Their exploration and achievements set replicable and referable benchmarks for the community. We extend our highest respect and heartfelt congratulations to these outstanding practitioners! Displayed in chronological order of practice:
+They are the pioneers who push EasyAIoT from "usable" to "easy to use and use well" — the following individuals have completed EasyAIoT project deployment or business scenario implementation. Their exploration and achievements set replicable and referable benchmarks for the community. We extend our highest respect and heartfelt congratulations to these outstanding practitioners! The following rankings are in no particular order:
 
 <table>
   <tbody>
