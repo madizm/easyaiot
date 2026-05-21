@@ -687,6 +687,25 @@ EasyAIoT — это проект с открытым исходным кодом
 <strong>Особая благодарность</strong>: Работа перечисленных участников способствовала развитию EasyAIoT в разных направлениях — от документации и сценариев кроссплатформенного развертывания до внедрения видеовозможностей по национальному стандарту (включая GB28181), интеграционного тестирования с ИИ и сквозной интеграции EasyAIoT-Edge на периферии. Их профессионализм и самоотверженная преданность достойны нашего изучения и уважения. Ещё раз выражаем нашу самую искреннюю благодарность этим выдающимся участникам! 🙏
 </p>
 
+## 🏆 Лучшие практики внедрения
+
+Они — пионеры, которые переводят EasyAIoT из состояния «можно использовать» в «удобно использовать и использовать хорошо». Перечисленные ниже участники завершили развёртывание проекта EasyAIoT или внедрение в бизнес-сценариях. Их опыт и результаты задают воспроизводимые ориентиры для сообщества. Мы выражаем им высочайшее уважение и искренние поздравления! Показаны в хронологическом порядке практики:
+
+<table>
+  <tbody>
+    <tr>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/best-practitioner/℡夏别.jpg" width="80px;" alt="℡夏别"/><br /><sub><b>℡夏别</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/best-practitioner/YiYaYiYaho.jpg" width="80px;" alt="YiYaYiYaho"/><br /><sub><b>YiYaYiYaho</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/best-practitioner/冯.jpg" width="80px;" alt="冯"/><br /><sub><b>冯</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/best-practitioner/在希望德田野上.jpg" width="80px;" alt="在希望德田野上"/><br /><sub><b>在希望德田野上</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/best-practitioner/漠然.png" width="80px;" alt="漠然"/><br /><sub><b>漠然</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/best-practitioner/爱吃小柚子.jpg" width="80px;" alt="爱吃小柚子"/><br /><sub><b>爱吃小柚子</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/best-practitioner/Wzs.jpg" width="80px;" alt="Wzs"/><br /><sub><b>Wzs</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/best-practitioner/Dark.jpg" width="80px;" alt="Dark"/><br /><sub><b>Dark</b></sub></a></td>
+    </tr>
+  </tbody>
+</table>
+
 ## 🙏 Благодарности
 
 Благодарим следующих людей за поддержку данного проекта, включая, помимо прочего, вклад в код, обратную связь по проблемам, финансовые пожертвования и другие способы! Следующий список в произвольном порядке:

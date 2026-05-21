@@ -687,6 +687,25 @@ EasyAIoT是一個開源學習項目，與商業行為無關。用戶在使用該
 <strong>特別致謝</strong>：以上貢獻者在跨平台部署文檔與腳本、國標視訊能力落地與 AI 聯調驗證、EasyAIoT-Edge 邊緣側端到端串聯等不同方面推動了 EasyAIoT 的發展，他們的專業精神與無私奉獻值得我們學習與尊敬。再次向這些傑出的貢獻者表示最誠摯的感謝！🙏
 </p>
 
+## 🏆 最佳實踐者
+
+他們是將 EasyAIoT 從「可用」推向「好用、用好」的先行者——以下各位已完成 EasyAIoT 專案部署或業務場景落地，其探索與成果為社群樹立了可複製、可參考的標竿，我們向這些卓越實踐者致以崇高敬意與衷心祝賀！按實踐先後順序展示：
+
+<table>
+  <tbody>
+    <tr>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/best-practitioner/℡夏别.jpg" width="80px;" alt="℡夏别"/><br /><sub><b>℡夏别</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/best-practitioner/YiYaYiYaho.jpg" width="80px;" alt="YiYaYiYaho"/><br /><sub><b>YiYaYiYaho</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/best-practitioner/冯.jpg" width="80px;" alt="冯"/><br /><sub><b>冯</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/best-practitioner/在希望德田野上.jpg" width="80px;" alt="在希望德田野上"/><br /><sub><b>在希望德田野上</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/best-practitioner/漠然.png" width="80px;" alt="漠然"/><br /><sub><b>漠然</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/best-practitioner/爱吃小柚子.jpg" width="80px;" alt="爱吃小柚子"/><br /><sub><b>爱吃小柚子</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/best-practitioner/Wzs.jpg" width="80px;" alt="Wzs"/><br /><sub><b>Wzs</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/best-practitioner/Dark.jpg" width="80px;" alt="Dark"/><br /><sub><b>Dark</b></sub></a></td>
+    </tr>
+  </tbody>
+</table>
+
 ## 🙏 致謝
 
 感謝以下各位對本項目包括但不限於代碼貢獻、問題反饋、資金捐贈等各種方式的支持！以下排名不分先後：

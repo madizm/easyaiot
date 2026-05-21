@@ -652,6 +652,25 @@ The following are outstanding contributors who have made significant contributio
 <strong>Special Thanks</strong>: The work of the above contributors has advanced EasyAIoT in many ways, including cross-platform deployment documentation and scripts, delivery of national-standard video capabilities (including GB28181), AI integration testing, and EasyAIoT-Edge end-to-end integration linking camera access with AI. Their professionalism and selfless dedication are worthy of our learning and respect. Once again, we express our most sincere gratitude to these outstanding contributors! 🙏
 </p>
 
+## 🏆 Best Practitioners
+
+They are the pioneers who push EasyAIoT from "usable" to "easy to use and use well" — the following individuals have completed EasyAIoT project deployment or business scenario implementation. Their exploration and achievements set replicable and referable benchmarks for the community. We extend our highest respect and heartfelt congratulations to these outstanding practitioners! Displayed in chronological order of practice:
+
+<table>
+  <tbody>
+    <tr>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/best-practitioner/℡夏别.jpg" width="80px;" alt="℡夏别"/><br /><sub><b>℡夏别</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/best-practitioner/YiYaYiYaho.jpg" width="80px;" alt="YiYaYiYaho"/><br /><sub><b>YiYaYiYaho</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/best-practitioner/冯.jpg" width="80px;" alt="冯"/><br /><sub><b>冯</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/best-practitioner/在希望德田野上.jpg" width="80px;" alt="在希望德田野上"/><br /><sub><b>在希望德田野上</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/best-practitioner/漠然.png" width="80px;" alt="漠然"/><br /><sub><b>漠然</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/best-practitioner/爱吃小柚子.jpg" width="80px;" alt="爱吃小柚子"/><br /><sub><b>爱吃小柚子</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/best-practitioner/Wzs.jpg" width="80px;" alt="Wzs"/><br /><sub><b>Wzs</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/best-practitioner/Dark.jpg" width="80px;" alt="Dark"/><br /><sub><b>Dark</b></sub></a></td>
+    </tr>
+  </tbody>
+</table>
+
 ## 🙏 Acknowledgements
 
 Thanks to the following contributors for code, feedback, donations, and support (in no particular order):

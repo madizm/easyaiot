@@ -687,6 +687,25 @@ Voici les contributeurs exceptionnels qui ont apporté une contribution signific
 <strong>Remerciements spéciaux</strong> : Le travail des contributeurs ci-dessus a fait avancer EasyAIoT sur plusieurs fronts, notamment la documentation et les scripts de déploiement multiplateforme, la mise en œuvre des capacités vidéo selon la norme nationale (dont GB28181), les tests d'intégration IA, ainsi que l'intégration de bout en bout EasyAIoT-Edge reliant l'accès caméra et l'IA sur l'edge. Leur professionnalisme et leur dévouement méritent notre reconnaissance et notre respect. Encore une fois, nous exprimons notre gratitude la plus sincère à ces contributeurs exceptionnels ! 🙏
 </p>
 
+## 🏆 Meilleurs praticiens
+
+Ce sont les pionniers qui font passer EasyAIoT de « utilisable » à « facile à utiliser et bien utilisé » — les personnes suivantes ont déployé le projet EasyAIoT ou mis en œuvre des scénarios métier. Leurs explorations et réalisations constituent des références reproductibles pour la communauté. Nous leur adressons notre plus profond respect et nos félicitations les plus sincères ! Affichés par ordre chronologique de mise en pratique :
+
+<table>
+  <tbody>
+    <tr>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/best-practitioner/℡夏别.jpg" width="80px;" alt="℡夏别"/><br /><sub><b>℡夏别</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/best-practitioner/YiYaYiYaho.jpg" width="80px;" alt="YiYaYiYaho"/><br /><sub><b>YiYaYiYaho</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/best-practitioner/冯.jpg" width="80px;" alt="冯"/><br /><sub><b>冯</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/best-practitioner/在希望德田野上.jpg" width="80px;" alt="在希望德田野上"/><br /><sub><b>在希望德田野上</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/best-practitioner/漠然.png" width="80px;" alt="漠然"/><br /><sub><b>漠然</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/best-practitioner/爱吃小柚子.jpg" width="80px;" alt="爱吃小柚子"/><br /><sub><b>爱吃小柚子</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/best-practitioner/Wzs.jpg" width="80px;" alt="Wzs"/><br /><sub><b>Wzs</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/best-practitioner/Dark.jpg" width="80px;" alt="Dark"/><br /><sub><b>Dark</b></sub></a></td>
+    </tr>
+  </tbody>
+</table>
+
 ## 🙏 Remerciements
 
 Nous remercions les personnes suivantes pour leur soutien à ce projet, sous forme de contributions de code, de retours sur problèmes, de dons financiers, etc. ! L'ordre ci-dessous n'est pas hiérarchique :
