@@ -643,12 +643,7 @@ EasyAIoT是一个开源学习项目，与商业行为无关。用户在使用该
 <td style="padding: 15px; border: 1px solid #e0e0e0; color: #444; line-height: 1.8;">为推动 EasyAIoT-Edge 项目的发展，完成摄像头接入与 AI 能力的端到端跑通，并实现功能串联，使边缘侧「接入—智能分析」链路可用、可闭环。</td>
 </tr>
 <tr>
-<td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50; width: 32%; min-width: 9rem;">
-<div style="display: flex; align-items: center; gap: 10px;">
-<img src=".image/sponsor/遗忘的星空.jpg" width="48" height="48" alt="遗忘的星空" style="border-radius: 50%; object-fit: cover; flex-shrink: 0;"/>
-<nobr>遗忘的星空</nobr>
-</div>
-</td>
+<td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50; width: 32%; min-width: 9rem;"><nobr>遗忘的星空</nobr></td>
 <td style="padding: 15px; border: 1px solid #e0e0e0; color: #444; line-height: 1.8;">为推动 EasyAIoT 项目在设备直连接入方向的发展，贡献多品牌 IP 摄像头资产盘点与网段扫描能力，支持海康 IPC、NVR 等设备的批量发现与识别；完善直连设备在同网段、跨网段场景下的批量搜索与一键注册流程，基于设备原生协议实现接入，可绕过海康 SDK、摆脱对海康平台的强依赖，为开放、可控的摄像头规模化接入奠定了基础。</td>
 </tr>
 </tbody>

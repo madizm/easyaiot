@@ -646,12 +646,7 @@ The following are outstanding contributors who have made significant contributio
 <td style="padding: 15px; border: 1px solid #e0e0e0; color: #444; line-height: 1.8;">Contributed to the EasyAIoT-Edge project by validating camera onboarding and AI capabilities end to end, and wiring these features into a coherent edge-side workflow.</td>
 </tr>
 <tr>
-<td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50; width: 32%; min-width: 9rem;">
-<div style="display: flex; align-items: center; gap: 10px;">
-<img src=".image/sponsor/遗忘的星空.jpg" width="48" height="48" alt="遗忘的星空" style="border-radius: 50%; object-fit: cover; flex-shrink: 0;"/>
-<nobr>遗忘的星空</nobr>
-</div>
-</td>
+<td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50; width: 32%; min-width: 9rem;"><nobr>遗忘的星空</nobr></td>
 <td style="padding: 15px; border: 1px solid #e0e0e0; color: #444; line-height: 1.8;">Contributed to EasyAIoT's direct device onboarding by delivering a multi-vendor IP camera asset inventory and subnet scanner, supporting batch discovery and identification of Hikvision IPCs, NVRs, and related devices; improved batch search and one-click registration for directly connected devices across same-subnet and cross-subnet scenarios. Device access is implemented via native protocols, bypassing the Hikvision SDK and reducing reliance on the Hikvision platform—laying the groundwork for open, controllable large-scale camera onboarding.</td>
 </tr>
 </tbody>

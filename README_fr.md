@@ -681,12 +681,7 @@ Voici les contributeurs exceptionnels qui ont apporté une contribution signific
 <td style="padding: 15px; border: 1px solid #e0e0e0; color: #444; line-height: 1.8;">A contribué au projet EasyAIoT-Edge en menant à bien la validation de bout en bout de l'intégration des caméras et des fonctions IA, et en reliant ces capacités pour former une chaîne fonctionnelle sur l'edge.</td>
 </tr>
 <tr>
-<td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50; width: 32%; min-width: 9rem;">
-<div style="display: flex; align-items: center; gap: 10px;">
-<img src=".image/sponsor/遗忘的星空.jpg" width="48" height="48" alt="遗忘的星空" style="border-radius: 50%; object-fit: cover; flex-shrink: 0;"/>
-<nobr>遗忘的星空</nobr>
-</div>
-</td>
+<td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50; width: 32%; min-width: 9rem;"><nobr>遗忘的星空</nobr></td>
 <td style="padding: 15px; border: 1px solid #e0e0e0; color: #444; line-height: 1.8;">A contribué au développement de l'intégration directe des appareils EasyAIoT en fournissant un inventaire multi-marques des caméras IP et un scanner de sous-réseaux, avec découverte en masse des IPC et NVR Hikvision ; amélioration de la recherche en masse et de l'enregistrement en un clic pour les appareils connectés directement, sur le même sous-réseau ou entre sous-réseaux. L'accès s'effectue via les protocoles natifs des appareils, contournant le SDK Hikvision et réduisant la dépendance à la plateforme Hikvision — posant les bases d'une intégration ouverte et maîtrisée des caméras à grande échelle.</td>
 </tr>
 </tbody>

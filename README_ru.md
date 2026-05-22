@@ -681,12 +681,7 @@ EasyAIoT — это проект с открытым исходным кодом
 <td style="padding: 15px; border: 1px solid #e0e0e0; color: #444; line-height: 1.8;">Внёс вклад в проект EasyAIoT-Edge: выполнена сквозная проверка подключения камер и функций ИИ, а также согласованная связка возможностей в единый работоспособный контур на периферии.</td>
 </tr>
 <tr>
-<td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50; width: 32%; min-width: 9rem;">
-<div style="display: flex; align-items: center; gap: 10px;">
-<img src=".image/sponsor/遗忘的星空.jpg" width="48" height="48" alt="遗忘的星空" style="border-radius: 50%; object-fit: cover; flex-shrink: 0;"/>
-<nobr>遗忘的星空</nobr>
-</div>
-</td>
+<td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50; width: 32%; min-width: 9rem;"><nobr>遗忘的星空</nobr></td>
 <td style="padding: 15px; border: 1px solid #e0e0e0; color: #444; line-height: 1.8;">Внёс вклад в развитие прямого подключения устройств EasyAIoT: инвентаризация IP-камер разных брендов и сканирование подсетей с массовым обнаружением IPC и NVR Hikvision; улучшены массовый поиск и регистрация в один клик для напрямую подключённых устройств в одной подсети и между подсетями. Доступ реализован через нативные протоколы устройств, с обходом SDK Hikvision и снижением зависимости от платформы Hikvision — заложена основа для открытого и контролируемого масштабного подключения камер.</td>
 </tr>
 </tbody>
