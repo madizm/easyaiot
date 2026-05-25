@@ -2197,6 +2197,8 @@ function setupModalCloseEvents() {
 }
 
 const IMAGE_UPLOAD_EXTENSIONS = /\.(jpe?g|png|gif|bmp|webp|tiff?)$/i;
+/** 每批上传张数，避免单次 FormData 过大触发 413（直连 Flask 与 Nginx 代理均适用） */
+const IMAGE_UPLOAD_BATCH_SIZE = 25;
 
 /** 与后端 _flatten_upload_relative_name 一致：子目录压平为 uploads 下唯一文件名 */
 function flattenUploadRelativeName(filename) {
@@ -2220,6 +2222,38 @@ function filterImageUploadFiles(files) {
 
 function uploadFilenameForFile(file) {
     return flattenUploadRelativeName(file.webkitRelativePath || file.name);
+}
+
+async function uploadImageFilesInBatches(files, onProgress) {
+    const total = files.length;
+    let done = 0;
+    for (let i = 0; i < total; i += IMAGE_UPLOAD_BATCH_SIZE) {
+        const batch = files.slice(i, i + IMAGE_UPLOAD_BATCH_SIZE);
+        const formData = new FormData();
+        batch.forEach(file => {
+            formData.append('files[]', file, uploadFilenameForFile(file));
+        });
+        const response = await fetch(apiUrl('/api/upload'), {
+            method: 'POST',
+            body: formData,
+        });
+        if (!response.ok) {
+            if (response.status === 413) {
+                throw new Error('REQUEST_ENTITY_TOO_LARGE');
+            }
+            let detail = `HTTP ${response.status}`;
+            try {
+                const body = await response.json();
+                if (body && body.error) detail = body.error;
+            } catch (_e) { /* ignore */ }
+            throw new Error(detail);
+        }
+        await response.json();
+        done += batch.length;
+        if (typeof onProgress === 'function') {
+            onProgress(done, total);
+        }
+    }
 }
 
 function readDirectoryEntryRecursive(entry, pathPrefix, files) {
@@ -2380,54 +2414,38 @@ function setupDatasetUploadEvents() {
             }
         });
         
-        // 上传图片按钮事件
-        uploadImagesBtn.addEventListener('click', function() {
+        // 上传图片按钮事件（分批上传，避免 413 REQUEST ENTITY TOO LARGE）
+        uploadImagesBtn.addEventListener('click', async function() {
             if (selectedImageFiles.length === 0) {
                 showToast('请先选择包含图片的文件夹');
                 return;
             }
 
             const uploadCount = selectedImageFiles.length;
-            // 显示上传中状态
             uploadImagesBtn.disabled = true;
-            uploadImagesBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 上传中...';
-            
-            // 创建FormData对象，用于发送文件
-            const formData = new FormData();
-            selectedImageFiles.forEach(file => {
-                formData.append('files[]', file, uploadFilenameForFile(file));
-            });
-            
-            // 发送真实的文件上传请求
-            fetch(apiUrl('/api/upload'), {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                // 重置按钮状态
+
+            const resetUploadBtn = () => {
                 uploadImagesBtn.innerHTML = '<i class="fas fa-upload"></i> 上传图片到数据集';
                 uploadImagesBtn.disabled = false;
-                
-                // 显示成功提示
+            };
+
+            try {
+                await uploadImageFilesInBatches(selectedImageFiles, (done, total) => {
+                    uploadImagesBtn.innerHTML =
+                        `<i class="fas fa-spinner fa-spin"></i> 上传中 ${done}/${total}...`;
+                });
+                resetUploadBtn();
                 showToast(`成功上传 ${uploadCount} 张图片`);
-                
-                // 关闭模态框
                 document.getElementById('datasetModal').style.display = 'none';
-                
-                // 重新加载图片列表（上传会切到本地上传槽）
                 refreshActiveDatasetSelect().then(() => loadImages());
-            })
-            .catch(error => {
+            } catch (error) {
                 console.error('上传失败:', error);
-                
-                // 重置按钮状态
-                uploadImagesBtn.innerHTML = '<i class="fas fa-upload"></i> 上传图片到数据集';
-                uploadImagesBtn.disabled = false;
-                
-                // 显示错误提示
-                showToast('上传失败，请重试');
-            });
+                resetUploadBtn();
+                const msg = error && error.message === 'REQUEST_ENTITY_TOO_LARGE'
+                    ? '单批图片过大，请减少文件夹内图片体积或联系管理员调大上传限制'
+                    : (error && error.message) || '上传失败，请重试';
+                showToast(msg);
+            }
         });
     }
     

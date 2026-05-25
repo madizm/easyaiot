@@ -22,6 +22,7 @@ import netifaces
 from urllib.parse import urlparse, parse_qs, unquote
 from flask import Flask, render_template, request, jsonify, send_from_directory
 from flask_cors import CORS
+from werkzeug.exceptions import RequestEntityTooLarge
 from PIL import Image
 
 
@@ -215,7 +216,18 @@ ANNOTATIONS_FOLDER = os.path.join(STATIC_FOLDER, 'annotations')
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['STATIC_FOLDER'] = STATIC_FOLDER
 app.config['ANNOTATIONS_FOLDER'] = ANNOTATIONS_FOLDER
-app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024 * 1024  # 最大上传2GB
+_max_upload_mb = int(os.getenv('AUTO_LABELING_MAX_UPLOAD_MB', '5120'))
+app.config['MAX_CONTENT_LENGTH'] = _max_upload_mb * 1024 * 1024
+
+
+@app.errorhandler(RequestEntityTooLarge)
+def handle_request_entity_too_large(_exc):
+    max_mb = _max_upload_mb
+    return jsonify({
+        'error': f'单次请求体超过 {max_mb}MB 限制，请减少每批上传的图片数量',
+        'code': 'REQUEST_ENTITY_TOO_LARGE',
+        'max_upload_mb': max_mb,
+    }), 413
 
 # 创建必要的目录
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
