@@ -91,6 +91,7 @@ build_with_cache() {
     print_info "docker build（麒麟 ARM，.build-cache bind mount）..."
     set +e
     docker build \
+        --build-context "pip-cache=$(pip_cache_build_context_dir "$SCRIPT_DIR")" \
         --build-arg BASE_IMAGE="$ARM_BASE_IMAGE" \
         --target runtime \
         --platform "$DOCKER_PLATFORM" \

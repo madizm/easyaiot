@@ -45,8 +45,8 @@ COPY iot-gb28181/pom.xml ./iot-gb28181/
 
 COPY . .
 
-# 单次 package：复用宿主机 m2；不用 clean（避免删掉同一次构建里已编译的 target）
-RUN --mount=type=bind,source=.build-cache/m2/repository,target=/m2/repository \
+# maven-repo 由 install_linux.sh 传入：docker build --build-context maven-repo=.build-cache/m2/repository
+RUN --mount=type=bind,from=maven-repo,source=.,target=/m2/repository,rw \
     mvn -B package \
     -DskipTests \
     -Dmaven.test.skip=true \

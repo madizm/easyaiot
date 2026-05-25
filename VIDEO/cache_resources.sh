@@ -36,13 +36,15 @@ fi
 print_info "清理旧的 pip 离线包..."
 find "$PIP_WHEELS_DIR" -maxdepth 1 -type f -delete 2>/dev/null || true
 
-print_info "使用基础镜像 ${BASE_IMAGE} 下载与容器一致的 pip 离线包..."
+print_warning "依赖包体积较大，首次下载可能需要 10–30 分钟，请勿中断"
+print_info "使用基础镜像 ${BASE_IMAGE} 下载与容器一致的 pip 离线包（无本地镜像时会先拉取）..."
 set +e
 docker run --rm \
+    -e PYTHONUNBUFFERED=1 \
     -v "$SCRIPT_DIR:/work" \
     -w /work \
     "$BASE_IMAGE" \
-    /bin/bash -lc 'pip install --upgrade pip -q -i https://pypi.tuna.tsinghua.edu.cn/simple && pip download -r requirements.txt -d .build-cache/pip-wheels --timeout 120 --retries 3 -i https://pypi.tuna.tsinghua.edu.cn/simple'
+    /bin/bash -lc 'pip install --upgrade pip -i https://pypi.tuna.tsinghua.edu.cn/simple && pip download -r requirements.txt -d .build-cache/pip-wheels --timeout 120 --retries 3 -i https://pypi.tuna.tsinghua.edu.cn/simple'
 status=$?
 set -e
 

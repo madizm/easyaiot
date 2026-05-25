@@ -115,6 +115,7 @@ build_with_cache() {
         print_info "执行构建（第 ${attempt}/${max_retries} 次）..."
         set +e
         docker build \
+            --build-context "pip-cache=$(pip_cache_build_context_dir "$SCRIPT_DIR")" \
             --target runtime \
             --platform "$DOCKER_PLATFORM" \
             -t ai-service:latest \

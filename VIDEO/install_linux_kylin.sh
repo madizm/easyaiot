@@ -72,7 +72,7 @@ prepare_cached_resources() {
         print_info "构建时将使用 pip-cache 在线安装（清华源）"
         return 0
     fi
-    print_warning "自动执行 cache_resources_arm.sh 预下载 wheel..."
+    print_warning "首次需预下载 pip 离线包，可能需要 10–30 分钟，进度如下..."
     if [ -x "$cache_script" ]; then
         ARM_BASE_IMAGE="${ARM_BASE_IMAGE:-pytorch/manylinuxaarch64-builder:cuda12.9}" "$cache_script" || true
     else
@@ -91,6 +91,7 @@ build_with_cache() {
     print_info "docker build（麒麟 ARM，.build-cache bind mount）..."
     set +e
     docker build \
+        --build-context "pip-cache=$(pip_cache_build_context_dir "$SCRIPT_DIR")" \
         --target runtime \
         --platform "$DOCKER_PLATFORM" \
         -t video-service:latest \

@@ -76,9 +76,11 @@ download_pip_packages() {
     print_info "清理旧的 pip wheel，避免不同 Python ABI 混用..."
     find "$PIP_WHEELS_DIR" -maxdepth 1 -type f -delete 2>/dev/null || true
 
-    print_info "使用 ARM 基础镜像下载与容器一致的 pip wheel..."
+    print_warning "依赖包体积较大，首次下载可能需要 10–30 分钟，请勿中断"
+    print_info "使用 ARM 基础镜像 ${ARM_BASE_IMAGE} 下载 pip wheel（无本地镜像时会先拉取）..."
     set +e
     docker run --rm \
+        -e PYTHONUNBUFFERED=1 \
         -v "$SCRIPT_DIR:/work" \
         -w /work \
         "$ARM_BASE_IMAGE" \

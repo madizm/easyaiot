@@ -15,12 +15,8 @@ WORKDIR /app
 # 注意：构建上下文是 DEVICE 根目录，所以路径是相对于根目录的
 COPY target/jars/iot-gateway.jar app.jar
 
-# 如果 Jar 包不存在，给出提示
-RUN if [ ! -f app.jar ]; then \
-        echo "错误: iot-gateway.jar 不存在！请先运行 base-builder 服务编译 Jar 包。" && \
-        exit 1; \
-    fi && \
-    chown appuser:appuser app.jar
+RUN test -f app.jar || (echo "缺少 target/jars/iot-gateway.jar，请先: ./install_linux.sh build-base" && exit 1)
+RUN chown appuser:appuser app.jar
 
 # 网关专用环境变量配置
 ENV TZ=Asia/Shanghai \

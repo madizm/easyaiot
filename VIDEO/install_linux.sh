@@ -64,8 +64,8 @@ prepare_cached_resources() {
         print_info "构建时将使用 pip-cache 在线安装（清华源）"
         return 0
     fi
-    print_warning "自动执行 cache_resources.sh 预下载 wheel..."
-    "$cache_script" 2>/dev/null || /bin/bash "$cache_script" || print_warning "预下载失败，将在线安装"
+    print_warning "首次需预下载 pip 离线包（约 2–5GB），可能需要 10–30 分钟，进度如下..."
+    "$cache_script" || /bin/bash "$cache_script" || print_warning "预下载失败，将在线安装"
 }
 
 build_with_cache() {
@@ -76,9 +76,10 @@ build_with_cache() {
     init_project_build_cache_dirs "$SCRIPT_DIR"
     enable_docker_buildkit
 
-    print_info "docker build（宿主机 .build-cache pip-cache/pip-wheels，BuildKit bind mount）..."
+    print_info "docker build（.build-cache pip-cache/pip-wheels，--build-context pip-cache）..."
     set +e
     docker build \
+        --build-context "pip-cache=$(pip_cache_build_context_dir "$SCRIPT_DIR")" \
         --target runtime \
         -t video-service:latest \
         --pull=false \

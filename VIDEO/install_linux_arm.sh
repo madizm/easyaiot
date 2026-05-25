@@ -127,7 +127,7 @@ prepare_cached_resources() {
 
     if [ $need_prefetch -eq 1 ]; then
         if [ -x "$cache_script" ]; then
-            print_warning "检测到本地离线资源不完整，先自动执行 cache_resources_arm.sh 进行预下载（首次会较慢）..."
+            print_warning "检测到本地离线资源不完整，先自动执行 cache_resources_arm.sh 预下载（约 10–30 分钟，进度如下）..."
             if "$cache_script"; then
                 print_success "预缓存完成，继续安装流程"
             else
@@ -181,6 +181,7 @@ build_with_cache() {
         print_info "执行构建（第 ${attempt}/${max_retries} 次）..."
         set +e
         docker build \
+            --build-context "pip-cache=$(pip_cache_build_context_dir "$SCRIPT_DIR")" \
             --target runtime \
             --platform "$DOCKER_PLATFORM" \
             -t video-service:latest \

@@ -31,7 +31,12 @@ LICENSE
 # Docker 相关
 docker-compose.yml
 Dockerfile
+Dockerfile.base
+docker-bake.hcl
 .dockerignore
+
+# 构建缓存（Maven 经 --build-context maven-repo 挂载，勿打进 COPY 上下文）
+.build-cache
 
 # 其他
 .DS_Store

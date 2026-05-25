@@ -17,6 +17,7 @@ init_project_build_cache_dirs() {
         "${base}/pnpm-store" \
         "${base}/m2/repository" \
         "${base}/pip-cache" \
+        "${base}/pip-cache/http" \
         "${base}/pip-wheels" \
         "${base}/docker-images"
 
@@ -37,4 +38,13 @@ print_build_cache_chown_hint() {
 enable_docker_buildkit() {
     export DOCKER_BUILDKIT=1
     export BUILDKIT_PROGRESS="${BUILDKIT_PROGRESS:-plain}"
+}
+
+# 宿主机 pip http 缓存目录（docker build --build-context pip-cache=...）
+pip_cache_build_context_dir() {
+    local project_dir="${1:-.}"
+    local cache
+    cache="$(cd "$project_dir" && pwd)/.build-cache/pip-cache"
+    mkdir -p "${cache}/http"
+    echo "$cache"
 }

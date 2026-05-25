@@ -33,11 +33,13 @@ fi
 
 find "$PIP_WHEELS_DIR" -maxdepth 1 -type f -delete 2>/dev/null || true
 
-print_info "使用 ${BASE_IMAGE} 下载标注平台 pip 离线包..."
+print_warning "依赖包体积较大，首次下载可能需要数分钟，请勿中断"
+print_info "使用 ${BASE_IMAGE} 下载标注平台 pip 离线包（无本地镜像时会先拉取）..."
 docker run --rm \
+    -e PYTHONUNBUFFERED=1 \
     -v "$SCRIPT_DIR:/work" \
     -w /work \
     "$BASE_IMAGE" \
-    /bin/bash -lc 'pip install --upgrade pip -q -i https://pypi.tuna.tsinghua.edu.cn/simple && pip download -r requirements.txt -d .build-cache/pip-wheels --timeout 120 --retries 3 -i https://pypi.tuna.tsinghua.edu.cn/simple'
+    /bin/bash -lc 'pip install --upgrade pip -i https://pypi.tuna.tsinghua.edu.cn/simple && pip download -r requirements.txt -d .build-cache/pip-wheels --timeout 120 --retries 3 -i https://pypi.tuna.tsinghua.edu.cn/simple'
 
 print_success "pip wheel 已保存到 $PIP_WHEELS_DIR"

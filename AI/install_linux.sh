@@ -63,7 +63,8 @@ prepare_cached_resources() {
         return 0
     fi
     if [ "${AUTO_CACHE_PIP:-1}" = "1" ] && [ -f "$cache_script" ]; then
-        BASE_IMAGE="${BASE_IMAGE:-pytorch/pytorch:2.9.0-cuda12.8-cudnn9-devel}" "$cache_script" 2>/dev/null || \
+        print_warning "首次需预下载 pip 离线包（约 2–5GB），可能需要 10–30 分钟，进度如下..."
+        BASE_IMAGE="${BASE_IMAGE:-pytorch/pytorch:2.9.0-cuda12.8-cudnn9-devel}" "$cache_script" || \
             BASE_IMAGE="${BASE_IMAGE:-pytorch/pytorch:2.9.0-cuda12.8-cudnn9-devel}" /bin/bash "$cache_script" || true
     fi
 }
@@ -76,7 +77,8 @@ prepare_auto_labeling_cached_resources() {
         return 0
     fi
     if [ "${AUTO_CACHE_PIP:-1}" = "1" ] && [ -f "$cache_script" ]; then
-        "$cache_script" 2>/dev/null || /bin/bash "$cache_script" || true
+        print_info "预下载标注平台 pip 离线包（进度如下）..."
+        "$cache_script" || /bin/bash "$cache_script" || true
     fi
 }
 
@@ -92,10 +94,11 @@ build_with_cache() {
         platform_opts="--platform $DOCKER_PLATFORM"
     fi
 
-    print_info "docker build（.build-cache pip-cache/pip-wheels bind mount）..."
+    print_info "docker build（.build-cache pip-cache/pip-wheels，--build-context pip-cache）..."
     set +e
     docker build \
         --build-arg BASE_IMAGE="${BASE_IMAGE:-pytorch/pytorch:2.9.0-cuda12.8-cudnn9-devel}" \
+        --build-context "pip-cache=$(pip_cache_build_context_dir "$SCRIPT_DIR")" \
         --target runtime \
         $platform_opts \
         -t ai-service:latest \
@@ -125,9 +128,10 @@ build_auto_labeling_with_cache() {
     enable_docker_buildkit
     prepare_auto_labeling_cached_resources
 
-    print_info "构建标注平台（.build-cache bind mount）..."
+    print_info "构建标注平台（.build-cache，--build-context pip-cache）..."
     set +e
     docker build \
+        --build-context "pip-cache=$(pip_cache_build_context_dir "$AUTO_LABELING_DIR")" \
         -t auto-labeling:latest \
         --pull=false \
         --build-arg OFFLINE_MODE=${OFFLINE_MODE:-0} \

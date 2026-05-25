@@ -122,10 +122,25 @@ build_base_jars() {
     mkdir -p "$JARS_DIR"
     print_info "Maven 本地仓库: $MAVEN_CACHE_DIR"
 
-    print_info "构建 device-base-builder（mvn 仅执行一次）..."
-    if ! docker build -f Dockerfile.base --target output -t device-base-builder:latest .; then
+    mkdir -p "$MAVEN_CACHE_DIR"
+    print_info "构建 device-base-builder（mvn 仅执行一次，Maven 写入宿主机 m2）..."
+    if ! docker build \
+        -f Dockerfile.base \
+        --target output \
+        -t device-base-builder:latest \
+        --build-context "maven-repo=${MAVEN_CACHE_DIR}" \
+        .; then
         print_error "Dockerfile.base 构建失败"
         exit 1
+    fi
+
+    local m2_kb
+    m2_kb=$(du -sk "$MAVEN_CACHE_DIR" 2>/dev/null | awk '{print $1}')
+    if [ -z "$m2_kb" ] || [ "$m2_kb" -lt 10240 ]; then
+        print_warning "Maven 缓存偏小（${m2_kb:-0}KB）: $MAVEN_CACHE_DIR"
+        print_info "若二次构建仍全量下载，请用 BuildKit 重建: ./install_linux.sh build-base"
+    else
+        print_success "Maven 依赖已缓存: $MAVEN_CACHE_DIR（约 $((m2_kb / 1024))MB）"
     fi
 
     print_info "提取 Jar 到 $JARS_DIR ..."
