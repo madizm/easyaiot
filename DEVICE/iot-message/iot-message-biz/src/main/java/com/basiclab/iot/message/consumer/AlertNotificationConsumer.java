@@ -74,8 +74,7 @@ public class AlertNotificationConsumer {
             List<String> notifyMethods = message.getNotifyMethods();
             Boolean shouldNotify = message.getShouldNotify();
             
-            boolean hasNotificationConfig = (channels != null && !channels.isEmpty()) 
-                    && (notifyUsers != null && !notifyUsers.isEmpty());
+            boolean hasNotificationConfig = hasAlertNotificationConfig(channels, notifyUsers);
             
             // 优先使用shouldNotify字段，如果没有则根据配置判断
             if (shouldNotify == null) {
@@ -135,6 +134,25 @@ public class AlertNotificationConsumer {
             //     acknowledgment.acknowledge();
             // }
         }
+    }
+
+    private static boolean hasAlertNotificationConfig(
+            List<Map<String, Object>> channels,
+            List<Map<String, Object>> notifyUsers) {
+        if (channels == null || channels.isEmpty()) {
+            return false;
+        }
+        if (notifyUsers != null && !notifyUsers.isEmpty()) {
+            return true;
+        }
+        return channels.stream().anyMatch(ch -> {
+            Object method = ch.get("method");
+            if (method == null) {
+                return false;
+            }
+            String m = method.toString().toLowerCase();
+            return "http".equals(m) || "webhook".equals(m);
+        });
     }
 }
 

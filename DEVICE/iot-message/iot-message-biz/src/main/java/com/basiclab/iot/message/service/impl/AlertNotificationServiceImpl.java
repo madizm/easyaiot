@@ -5,6 +5,7 @@ import com.basiclab.iot.message.domain.entity.*;
 import com.basiclab.iot.message.domain.model.AlertNotificationMessage;
 import com.basiclab.iot.message.domain.model.SendResult;
 import com.basiclab.iot.message.domain.model.vo.MessagePrepareVO;
+import com.basiclab.iot.message.mapper.TMsgHttpMapper;
 import com.basiclab.iot.message.sendlogic.MessageTypeEnum;
 import com.basiclab.iot.message.service.AlertNotificationService;
 import com.basiclab.iot.message.service.MessagePrepareService;
@@ -19,6 +20,7 @@ import javax.annotation.Resource;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -40,6 +42,11 @@ public class AlertNotificationServiceImpl implements AlertNotificationService {
 
     @Resource
     private NotifyTemplateApi notifyTemplateApi;
+
+    @Autowired
+    private TMsgHttpMapper tMsgHttpMapper;
+
+    private static final Set<String> USERLESS_NOTIFY_METHODS = Set.of("http", "webhook");
 
     /**
      * 通知方式到消息类型的映射表（优化：使用Map替代switch-case）
@@ -85,8 +92,11 @@ public class AlertNotificationServiceImpl implements AlertNotificationService {
                 return;
             }
 
-            if (notifyUsers == null || notifyUsers.isEmpty()) {
-                log.warn("告警通知消息中没有通知人: alertId={}", notificationMessage.getAlertId());
+            boolean hasUsers = notifyUsers != null && !notifyUsers.isEmpty();
+            boolean hasUserlessChannel = hasUserlessChannel(channels);
+            if (!hasUsers && !hasUserlessChannel) {
+                log.warn("告警通知消息中没有通知人且无 HTTP/Webhook 渠道: alertId={}",
+                        notificationMessage.getAlertId());
                 return;
             }
 
@@ -102,11 +112,21 @@ public class AlertNotificationServiceImpl implements AlertNotificationService {
                         log.warn("通知渠道配置不完整: method={}, template_id={}", method, templateIdObj);
                         continue;
                     }
-                    
-                    // 获取模板并格式化内容
-                    String content = getTemplateContent(templateIdObj, templateParams);
+
                     String title = buildNotificationTitle(notificationMessage);
-                    
+
+                    if (isUserlessNotifyMethod(method)) {
+                        sendHttpWebhookFromTemplate(templateIdObj, title, templateParams, notificationMessage);
+                        continue;
+                    }
+
+                    if (!hasUsers) {
+                        log.warn("渠道 {} 需要通知人但未配置: alertId={}", method,
+                                notificationMessage.getAlertId());
+                        continue;
+                    }
+
+                    String content = getTemplateContent(templateIdObj, templateParams);
                     sendNotificationByMethod(method, notifyUsers, title, content, notificationMessage);
                 } catch (Exception e) {
                     log.error("发送告警通知失败: channel={}, alertId={}, error={}",
@@ -144,6 +164,102 @@ public class AlertNotificationServiceImpl implements AlertNotificationService {
         params.put("task_name", notificationMessage.getTaskName());
         
         return params;
+    }
+
+    /**
+     * HTTP/Webhook 渠道：从 t_msg_http 加载模板并发送（不依赖 notifyUsers）
+     */
+    private void sendHttpWebhookFromTemplate(
+            Object templateIdObj,
+            String title,
+            Map<String, Object> templateParams,
+            AlertNotificationMessage notificationMessage) {
+        String templateId = templateIdObj.toString();
+        TMsgHttp template = tMsgHttpMapper.selectByPrimaryKey(templateId);
+        if (template == null) {
+            log.warn("HTTP 模板不存在: templateId={}, alertId={}", templateId,
+                    notificationMessage.getAlertId());
+            return;
+        }
+        if (template.getUrl() == null || template.getUrl().trim().isEmpty()) {
+            log.warn("HTTP 模板未配置 URL: templateId={}, alertId={}", templateId,
+                    notificationMessage.getAlertId());
+            return;
+        }
+
+        String msgId = UUID.randomUUID().toString();
+        String content = replacePlaceholders(
+                template.getBody() != null && !template.getBody().trim().isEmpty()
+                        ? template.getBody()
+                        : buildDefaultContent(templateParams),
+                templateParams);
+        String url = replacePlaceholders(template.getUrl(), templateParams);
+
+        try {
+            MessagePrepareVO messagePrepareVO = new MessagePrepareVO();
+            messagePrepareVO.setMsgType(MessageTypeEnum.HTTP_CODE);
+            messagePrepareVO.setMsgName("告警通知-" + notificationMessage.getAlertId());
+            prepareHttpMessageFromTemplate(messagePrepareVO, template, url, content, msgId);
+
+            messagePrepareVO = messagePrepareService.add(messagePrepareVO);
+            SendResult result = messageSendCommon.messageSend(MessageTypeEnum.HTTP_CODE, msgId);
+            log.info("HTTP/Webhook 告警通知发送结果: msgId={}, templateId={}, url={}, success={}, info={}",
+                    msgId, templateId, url, result.isSuccess(), result.getInfo());
+        } catch (Exception e) {
+            log.error("HTTP/Webhook 告警通知发送失败: templateId={}, alertId={}, error={}",
+                    templateId, notificationMessage.getAlertId(), e.getMessage(), e);
+        }
+    }
+
+    private void prepareHttpMessageFromTemplate(
+            MessagePrepareVO messagePrepareVO,
+            TMsgHttp template,
+            String url,
+            String body,
+            String msgId) {
+        TMsgHttp tMsgHttp = new TMsgHttp();
+        tMsgHttp.setId(msgId);
+        tMsgHttp.setMsgType(MessageTypeEnum.HTTP_CODE);
+        tMsgHttp.setMsgName(template.getMsgName() != null ? template.getMsgName() : "告警通知");
+        tMsgHttp.setUrl(url);
+        tMsgHttp.setMethod(template.getMethod() != null && !template.getMethod().trim().isEmpty()
+                ? template.getMethod() : "POST");
+        tMsgHttp.setBody(body);
+        tMsgHttp.setBodyType(template.getBodyType());
+        tMsgHttp.setHeaders(template.getHeaders());
+        tMsgHttp.setParams(template.getParams());
+        tMsgHttp.setCookies(template.getCookies());
+        messagePrepareVO.setT_Msg_Http(tMsgHttp);
+    }
+
+    private static boolean isUserlessNotifyMethod(String method) {
+        return method != null && USERLESS_NOTIFY_METHODS.contains(method.toLowerCase());
+    }
+
+    private static boolean hasUserlessChannel(List<Map<String, Object>> channels) {
+        if (channels == null) {
+            return false;
+        }
+        for (Map<String, Object> channel : channels) {
+            Object method = channel.get("method");
+            if (method != null && isUserlessNotifyMethod(method.toString())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String replacePlaceholders(String text, Map<String, Object> templateParams) {
+        if (text == null || text.isEmpty()) {
+            return text;
+        }
+        String result = text;
+        for (Map.Entry<String, Object> entry : templateParams.entrySet()) {
+            String placeholder = "${" + entry.getKey() + "}";
+            String value = entry.getValue() != null ? entry.getValue().toString() : "";
+            result = result.replace(placeholder, value);
+        }
+        return result;
     }
 
     /**

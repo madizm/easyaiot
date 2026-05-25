@@ -126,9 +126,8 @@ public class AlertNotificationConsumer {
             
             // 2. 如果开启了通知，发送到通知主题供iot-message消费
             try {
-                // 检查是否有通知配置
-                boolean hasNotificationConfig = (channels != null && !channels.isEmpty()) 
-                        && (notifyUsers != null && !notifyUsers.isEmpty());
+                // 检查是否有通知配置（HTTP/Webhook 只需 channels，不强制 notifyUsers）
+                boolean hasNotificationConfig = hasAlertNotificationConfig(channels, notifyUsers);
                 
                 // 优先使用shouldNotify字段，如果没有则根据配置判断
                 if (shouldNotify == null) {
@@ -208,6 +207,28 @@ public class AlertNotificationConsumer {
             //     acknowledgment.acknowledge();
             // }
         }
+    }
+
+    /**
+     * HTTP/Webhook 渠道的目标 URL 在消息模板中，不依赖 notifyUsers。
+     */
+    private static boolean hasAlertNotificationConfig(
+            List<Map<String, Object>> channels,
+            List<Map<String, Object>> notifyUsers) {
+        if (channels == null || channels.isEmpty()) {
+            return false;
+        }
+        if (notifyUsers != null && !notifyUsers.isEmpty()) {
+            return true;
+        }
+        return channels.stream().anyMatch(ch -> {
+            Object method = ch.get("method");
+            if (method == null) {
+                return false;
+            }
+            String m = method.toString().toLowerCase();
+            return "http".equals(m) || "webhook".equals(m);
+        });
     }
 }
 

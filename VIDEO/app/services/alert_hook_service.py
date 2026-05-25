@@ -18,6 +18,9 @@ from models import db, AlgorithmTask, Device
 
 logger = logging.getLogger(__name__)
 
+# HTTP/Webhook 渠道不依赖 notify_users（URL 在消息模板中）
+_USERLESS_NOTIFY_METHODS = frozenset({'http', 'webhook'})
+
 _producer = None
 _producer_init_failed = False
 _last_init_attempt_time = 0
@@ -205,6 +208,14 @@ def _build_minimal_alert_kafka_message(
     }
 
 
+def _is_userless_notify_method(method: str) -> bool:
+    return (method or '').lower() in _USERLESS_NOTIFY_METHODS
+
+
+def _has_userless_channel(channels: list) -> bool:
+    return any(_is_userless_notify_method(ch.get('method', '')) for ch in (channels or []))
+
+
 def _query_alert_notification_config(device_id: str, task_type: str = None) -> Optional[Dict]:
     """
     查询设备的告警通知配置
@@ -246,15 +257,6 @@ def _query_alert_notification_config(device_id: str, task_type: str = None) -> O
                 logger.info(f"📋 找到SnapTask配置: device_id={device_id}, task_id={task.id}, task_name={task.task_name}, "
                           f"notify_users={task.notify_users is not None}, notify_methods={task.notify_methods}")
                 
-                # 检查抑制时间
-                if task.last_notify_time:
-                    suppress_seconds = task.alarm_suppress_time or 300
-                    time_since_last_notify = (datetime.utcnow() - task.last_notify_time).total_seconds()
-                    if time_since_last_notify < suppress_seconds:
-                        logger.debug(f"告警通知在抑制时间内，跳过发送: device_id={device_id}, "
-                                   f"time_since_last_notify={time_since_last_notify:.0f}秒")
-                        return None
-                
                 # 组装通知配置
                 config = {
                     'task_id': task.id,
@@ -266,6 +268,19 @@ def _query_alert_notification_config(device_id: str, task_type: str = None) -> O
                     'face_detection_enabled': False,
                     'plate_detection_enabled': False
                 }
+
+                # 检查抑制时间
+                if task.last_notify_time:
+                    suppress_seconds = task.alarm_suppress_time or 300
+                    time_since_last_notify = (datetime.utcnow() - task.last_notify_time).total_seconds()
+                    if time_since_last_notify < suppress_seconds:
+                        logger.debug(
+                            f"告警通知在抑制时间内，本轮不发送通知: device_id={device_id}, "
+                            f"time_since_last_notify={time_since_last_notify:.0f}秒, "
+                            f"suppress_seconds={suppress_seconds}"
+                        )
+                        config['notification_suppressed'] = True
+                        return config
                 logger.info(f"📋 SnapTask通知配置详情: device_id={device_id}, task_id={task.id}, "
                           f"notify_users类型={type(task.notify_users).__name__}, "
                           f"notify_methods={task.notify_methods}, "
@@ -312,16 +327,7 @@ def _query_alert_notification_config(device_id: str, task_type: str = None) -> O
                 logger.warning(f"⚠️  找到开启告警事件和告警通知的算法任务，但未配置通知渠道和模板: device_id={device_id}, task_id={task.id}, task_name={task.task_name}, task_type={task.task_type}")
                 return None
             
-            # 检查抑制时间
-            if task.last_notify_time:
-                suppress_seconds = task.alarm_suppress_time or 300
-                time_since_last_notify = (datetime.utcnow() - task.last_notify_time).total_seconds()
-                if time_since_last_notify < suppress_seconds:
-                    logger.debug(f"告警通知在抑制时间内，跳过发送: device_id={device_id}, "
-                               f"time_since_last_notify={time_since_last_notify:.0f}秒")
-                    return None
-            
-            # 解析通知配置
+            # 解析通知配置（抑制判断前解析，避免抑制窗口被误报为「未找到配置」）
             notification_config_data = None
             notify_users_from_config = None
             if task.alert_notification_config:
@@ -329,7 +335,6 @@ def _query_alert_notification_config(device_id: str, task_type: str = None) -> O
                     notification_config_data = json.loads(task.alert_notification_config) if isinstance(task.alert_notification_config, str) else task.alert_notification_config
                     logger.debug(f"解析alert_notification_config成功: device_id={device_id}, task_id={task.id}, config_keys={list(notification_config_data.keys()) if isinstance(notification_config_data, dict) else 'not_dict'}")
                     
-                    # 从配置中提取通知人信息（如果已保存）
                     if isinstance(notification_config_data, dict):
                         notify_users_from_config = notification_config_data.get('notify_users')
                         channels = notification_config_data.get('channels', [])
@@ -340,13 +345,34 @@ def _query_alert_notification_config(device_id: str, task_type: str = None) -> O
                             logger.debug(f"从alert_notification_config中获取到通知人: {len(notify_users_from_config)}个")
                 except Exception as e:
                     logger.error(f"❌ 解析告警通知配置失败: device_id={device_id}, task_id={task.id}, error={str(e)}, config={task.alert_notification_config[:200] if task.alert_notification_config else None}")
+
+            # 检查抑制时间
+            if task.last_notify_time:
+                suppress_seconds = task.alarm_suppress_time or 300
+                time_since_last_notify = (datetime.utcnow() - task.last_notify_time).total_seconds()
+                if time_since_last_notify < suppress_seconds:
+                    logger.debug(
+                        f"告警通知在抑制时间内，本轮不发送通知: device_id={device_id}, "
+                        f"time_since_last_notify={time_since_last_notify:.0f}秒, "
+                        f"suppress_seconds={suppress_seconds}"
+                    )
+                    return {
+                        'task_id': task.id,
+                        'task_name': task.task_name,
+                        'alert_notification_config': notification_config_data,
+                        'notify_users': notify_users_from_config,
+                        'alarm_suppress_time': task.alarm_suppress_time,
+                        'face_detection_enabled': bool(task.face_detection_enabled),
+                        'plate_detection_enabled': bool(task.plate_detection_enabled),
+                        'notification_suppressed': True,
+                    }
             
             # 组装通知配置
             config = {
                 'task_id': task.id,
                 'task_name': task.task_name,
                 'alert_notification_config': notification_config_data,
-                'notify_users': notify_users_from_config,  # 添加通知人信息
+                'notify_users': notify_users_from_config,
                 'alarm_suppress_time': task.alarm_suppress_time,
                 'face_detection_enabled': bool(task.face_detection_enabled),
                 'plate_detection_enabled': bool(task.plate_detection_enabled)
@@ -597,29 +623,38 @@ def process_alert_hook(alert_data: Dict) -> Dict:
         # 构建告警消息（直接发送原始告警数据，Java端会处理）
         # 如果开启了告警通知，发送到Kafka
         if notification_config:
-            logger.info(f"📨 找到通知配置，开始处理告警通知: device_id={device_id}, "
-                       f"task_id={notification_config.get('task_id')}, "
-                       f"task_name={notification_config.get('task_name')}")
+            if notification_config.get('notification_suppressed'):
+                logger.debug(
+                    f"告警通知处于抑制窗口，发送落库消息（不推送通知）: device_id={device_id}, "
+                    f"task_id={notification_config.get('task_id')}"
+                )
+            else:
+                logger.info(f"📨 找到通知配置，开始处理告警通知: device_id={device_id}, "
+                           f"task_id={notification_config.get('task_id')}, "
+                           f"task_name={notification_config.get('task_name')}")
             
             producer = get_kafka_producer()
             if producer is not None:
                 try:
-                    # 构建通知消息（使用原始alert_data，不依赖数据库记录）
-                    notification_message = _build_notification_message_for_kafka(
-                        alert_data,
-                        notification_config,
-                        detection_switches
-                    )
-                    
-                    # 通知人列表为空时原先会直接跳过 Kafka → iot-sink 无法落库/上传 MinIO，image_url 永远为空
-                    if notification_message is None:
-                        logger.warning(
-                            f"⚠️  告警通知消息构建失败（通知人列表为空），"
-                            f"将发送精简消息以保证 iot-sink 落库与 MinIO: device_id={device_id}"
-                        )
+                    if notification_config.get('notification_suppressed'):
                         notification_message = _build_minimal_alert_kafka_message(
                             alert_data, detection_switches
                         )
+                    else:
+                        notification_message = _build_notification_message_for_kafka(
+                            alert_data,
+                            notification_config,
+                            detection_switches
+                        )
+                        
+                        if notification_message is None:
+                            logger.warning(
+                                f"⚠️  告警通知消息构建失败，"
+                                f"将发送精简消息以保证 iot-sink 落库与 MinIO: device_id={device_id}"
+                            )
+                            notification_message = _build_minimal_alert_kafka_message(
+                                alert_data, detection_switches
+                            )
                     
                     kafka_topic = _kafka_topic_for_alert_task_type(
                         alert_data.get('task_type', 'realtime')
@@ -842,11 +877,12 @@ def _build_notification_message_for_kafka(alert_data: Dict, notification_config:
             logger.debug(f"从消息模板获取到通知人: {len(notify_users)}个")
     
     # 判断是否需要通知
-    # 如果有通知人，并且有通知方式（channels或notify_methods），则需要通知
-    # 注意：即使没有channels，只要有notify_users和notify_methods，也应该通知（适用于SnapTask）
-    should_notify = bool(notify_users and (channels or notify_methods))
-    if notify_users and not should_notify:
-        # 如果有通知人但没有通知方式，记录警告
+    has_channels = bool(channels or notify_methods)
+    has_users = bool(notify_users)
+    has_userless = _has_userless_channel(channels)
+    # HTTP/Webhook 只需 channels（URL 在模板中），不强制 notify_users
+    should_notify = has_channels and (has_users or has_userless)
+    if has_users and not should_notify:
         logger.warning(f"⚠️  有通知人但没有通知方式: device_id={device_id}, task_id={task_id}, "
                       f"notify_users数量={len(notify_users)}, channels数量={len(channels)}, "
                       f"notify_methods={notify_methods}")
@@ -854,14 +890,29 @@ def _build_notification_message_for_kafka(alert_data: Dict, notification_config:
     # 记录通知配置信息
     logger.info(f"📊 通知配置信息: device_id={device_id}, task_id={task_id}, "
                 f"channels数量={len(channels)}, notify_methods={notify_methods}, "
-                f"notify_users数量={len(notify_users)}, shouldNotify={should_notify}")
+                f"notify_users数量={len(notify_users)}, has_userless_channel={has_userless}, "
+                f"shouldNotify={should_notify}")
     
-    # 如果通知人列表为空，返回None
-    if not notify_users:
-        logger.warning(f"⚠️  告警通知消息中没有通知人，跳过发送: device_id={device_id}, "
-                     f"task_id={task_id}, task_name={task_name}, "
-                     f"channels={channels}, notification_config={notification_config}")
-        return None
+    if notification_config.get('notification_suppressed'):
+        should_notify = False
+        logger.debug(
+            f"告警通知处于抑制窗口，本轮不发送通知: device_id={device_id}, task_id={task_id}"
+        )
+
+    if not should_notify:
+        if not has_channels:
+            logger.warning(
+                f"⚠️  告警通知无有效渠道，跳过发送: device_id={device_id}, "
+                f"task_id={task_id}, task_name={task_name}"
+            )
+            return None
+        if not has_users and not has_userless:
+            logger.warning(
+                f"⚠️  告警通知消息中没有通知人且无 HTTP/Webhook 渠道，跳过发送: "
+                f"device_id={device_id}, task_id={task_id}, task_name={task_name}, "
+                f"channels={channels}"
+            )
+            return None
     
     # 处理告警时间格式
     alert_time = alert_data.get('time')

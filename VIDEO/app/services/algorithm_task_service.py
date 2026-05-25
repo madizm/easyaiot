@@ -22,6 +22,11 @@ ALERT_EVENT_SUPPRESS_MIN = 1
 ALERT_EVENT_SUPPRESS_MAX = 3600
 ALARM_SUPPRESS_MIN = 0
 ALARM_SUPPRESS_MAX = 86400
+_USERLESS_NOTIFY_METHODS = frozenset({'http', 'webhook'})
+
+
+def _has_userless_channel(channels: List[Dict]) -> bool:
+    return any((ch.get('method') or '').lower() in _USERLESS_NOTIFY_METHODS for ch in (channels or []))
 
 
 def _normalize_alert_interval_fields(
@@ -529,7 +534,15 @@ def create_algorithm_task(task_name: str,
                                       f"wxcp_userid={user.get('wxcp_userid')}, ding_userid={user.get('ding_userid')}, "
                                       f"feishu_userid={user.get('feishu_userid')}, previewUser={user.get('previewUser')}")
                     else:
-                        logger.warning(f"⚠️  未能从消息模板提取通知人信息，配置中将不包含通知人。请检查：1) 消息模板是否配置了userGroupId 2) 用户组是否包含用户 3) API调用是否成功")
+                        if _has_userless_channel(channels):
+                            logger.info(
+                                "ℹ️  包含 HTTP/Webhook 渠道，无需从模板提取通知人（URL 在消息模板中）"
+                            )
+                        else:
+                            logger.warning(
+                                "⚠️  未能从消息模板提取通知人信息，配置中将不包含通知人。"
+                                "请检查：1) 消息模板是否配置了userGroupId 2) 用户组是否包含用户 3) API调用是否成功"
+                            )
                 else:
                     logger.warning(f"⚠️  告警通知配置中没有channels字段或channels为空")
                 
@@ -771,7 +784,15 @@ def update_algorithm_task(task_id: int, **kwargs) -> AlgorithmTask:
                                       f"wxcp_userid={user.get('wxcp_userid')}, ding_userid={user.get('ding_userid')}, "
                                       f"feishu_userid={user.get('feishu_userid')}, previewUser={user.get('previewUser')}")
                     else:
-                        logger.warning(f"⚠️  未能从消息模板提取通知人信息，配置中将不包含通知人（更新）。请检查：1) 消息模板是否配置了userGroupId 2) 用户组是否包含用户 3) API调用是否成功")
+                        if _has_userless_channel(channels):
+                            logger.info(
+                                "ℹ️  包含 HTTP/Webhook 渠道，无需从模板提取通知人（URL 在消息模板中）（更新）"
+                            )
+                        else:
+                            logger.warning(
+                                "⚠️  未能从消息模板提取通知人信息，配置中将不包含通知人（更新）。"
+                                "请检查：1) 消息模板是否配置了userGroupId 2) 用户组是否包含用户 3) API调用是否成功"
+                            )
                 else:
                     logger.warning(f"⚠️  告警通知配置中没有channels字段或channels为空（更新）")
                 
