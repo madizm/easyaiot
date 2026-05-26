@@ -1,5 +1,6 @@
 package com.basiclab.iot.message.service.impl;
 
+import com.alibaba.fastjson.JSONObject;
 import com.basiclab.iot.message.common.MessageSendCommon;
 import com.basiclab.iot.message.domain.entity.*;
 import com.basiclab.iot.message.domain.model.AlertNotificationMessage;
@@ -156,14 +157,35 @@ public class AlertNotificationServiceImpl implements AlertNotificationService {
             params.put("time", alert.getTime() != null ? alert.getTime() : "");
             params.put("image_path", alert.getImagePath() != null ? alert.getImagePath() : "");
             params.put("record_path", alert.getRecordPath() != null ? alert.getRecordPath() : "");
+            params.put("task_type", alert.getTaskType() != null ? alert.getTaskType() : "");
         }
-        
+
+        params.put("alert_id", notificationMessage.getAlertId());
         params.put("device_id", notificationMessage.getDeviceId());
         params.put("device_name", notificationMessage.getDeviceName());
         params.put("task_id", notificationMessage.getTaskId());
         params.put("task_name", notificationMessage.getTaskName());
-        
+
         return params;
+    }
+
+    /**
+     * 构建HTTP/Webhook默认请求体（当模板未配置body时使用）
+     * 输出结构化JSON，确保接收端能解析到图片、算法任务名称、时间等告警字段
+     */
+    private String buildDefaultHttpBody(Map<String, Object> params) {
+        JSONObject body = new JSONObject(true);
+        body.put("imageUrl", strValue(params.get("image_path")));
+        body.put("time", strValue(params.get("time")));
+        body.put("event", strValue(params.get("event")));
+        body.put("deviceName", strValue(params.get("device_name")));
+        body.put("deviceId", strValue(params.get("device_id")));
+        body.put("object", strValue(params.get("object")));
+        return body.toJSONString();
+    }
+
+    private static String strValue(Object value) {
+        return value != null ? value.toString() : "";
     }
 
     /**
@@ -188,18 +210,23 @@ public class AlertNotificationServiceImpl implements AlertNotificationService {
         }
 
         String msgId = UUID.randomUUID().toString();
-        String content = replacePlaceholders(
-                template.getBody() != null && !template.getBody().trim().isEmpty()
-                        ? template.getBody()
-                        : buildDefaultContent(templateParams),
-                templateParams);
+        boolean hasBody = template.getBody() != null && !template.getBody().trim().isEmpty();
+        String content;
+        String bodyType;
+        if (hasBody) {
+            content = replacePlaceholders(template.getBody(), templateParams);
+            bodyType = template.getBodyType();
+        } else {
+            content = buildDefaultHttpBody(templateParams);
+            bodyType = "application/json";
+        }
         String url = replacePlaceholders(template.getUrl(), templateParams);
 
         try {
             MessagePrepareVO messagePrepareVO = new MessagePrepareVO();
             messagePrepareVO.setMsgType(MessageTypeEnum.HTTP_CODE);
             messagePrepareVO.setMsgName("告警通知-" + notificationMessage.getAlertId());
-            prepareHttpMessageFromTemplate(messagePrepareVO, template, url, content, msgId);
+            prepareHttpMessageFromTemplate(messagePrepareVO, template, url, content, bodyType, msgId);
 
             messagePrepareVO = messagePrepareService.add(messagePrepareVO);
             SendResult result = messageSendCommon.messageSend(MessageTypeEnum.HTTP_CODE, msgId);
@@ -216,6 +243,7 @@ public class AlertNotificationServiceImpl implements AlertNotificationService {
             TMsgHttp template,
             String url,
             String body,
+            String bodyType,
             String msgId) {
         TMsgHttp tMsgHttp = new TMsgHttp();
         tMsgHttp.setId(msgId);
@@ -225,7 +253,7 @@ public class AlertNotificationServiceImpl implements AlertNotificationService {
         tMsgHttp.setMethod(template.getMethod() != null && !template.getMethod().trim().isEmpty()
                 ? template.getMethod() : "POST");
         tMsgHttp.setBody(body);
-        tMsgHttp.setBodyType(template.getBodyType());
+        tMsgHttp.setBodyType(bodyType);
         tMsgHttp.setHeaders(template.getHeaders());
         tMsgHttp.setParams(template.getParams());
         tMsgHttp.setCookies(template.getCookies());

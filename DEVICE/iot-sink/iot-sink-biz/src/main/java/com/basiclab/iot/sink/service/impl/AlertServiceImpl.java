@@ -143,6 +143,8 @@ public class AlertServiceImpl implements AlertService {
             if (minioPath != null && alertId != null) {
                 // 更新数据库中的图片路径
                 updateAlertImagePath(alertId, minioPath);
+                // 将 MinIO 下载地址回写到消息，使下游通知（HTTP/Webhook 等）推送可访问的图片 URL，而非本地磁盘路径
+                alert.setImagePath(minioPath);
                 log.debug("告警 {} 图片路径已更新: {}", alertId, minioPath);
             } else if (minioPath == null) {
                 // uploadImageToMinio 已在内部区分：文件不存在、未就绪、桶创建失败、putObject 异常等；此处勿统称「MinIO 失败」以免误导
@@ -260,6 +262,8 @@ public class AlertServiceImpl implements AlertService {
             if (minioPath != null && alertId != null) {
                 // 更新数据库中的图片路径
                 updateAlertImagePath(alertId, minioPath);
+                // 将 MinIO 下载地址回写到消息，使下游通知（HTTP/Webhook 等）推送可访问的图片 URL，而非本地磁盘路径
+                alert.setImagePath(minioPath);
                 log.debug("抓拍算法任务告警 {} 图片路径已更新: {}", alertId, minioPath);
             } else if (minioPath == null) {
                 log.warn("抓拍算法任务告警 {} 图片上传失败，保留原始路径: {}", alertId, imagePath);
