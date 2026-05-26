@@ -32,6 +32,11 @@ AUTO_LABELING_DIR="${EASYAIOT_ROOT}/AI/services/auto-labeling"
 PYTORCH_BASE_IMAGE="${BASE_IMAGE:-pytorch/pytorch:2.9.0-cuda12.8-cudnn9-devel}"
 AUTO_LABELING_BASE_IMAGE="${AUTO_LABELING_BASE_IMAGE:-pytorch/pytorch:2.9.0-cuda12.8-cudnn9-runtime}"
 
+# PyPI 仅提供 sdist、需在 devel 镜像中预编译为 wheel（runtime 无 gcc）
+SDIST_WHEEL_SPECS=(
+    "netifaces==0.11.0"
+)
+
 # 参数: all（默认）| ai | video | auto-labeling
 TARGET_MODULE="${1:-all}"
 
@@ -97,6 +102,37 @@ prepare_flattened_requirements() {
     echo "$out_file"
 }
 
+# 将仅有 tar.gz 的 C 扩展预编译为 wheel，供 runtime 基础镜像离线/混合安装
+build_required_sdist_wheels() {
+    local wheels_dir="$1"
+    local build_image="${SDIST_WHEEL_BUILD_IMAGE:-$PYTORCH_BASE_IMAGE}"
+    local spec pkg_name
+
+    for spec in "${SDIST_WHEEL_SPECS[@]}"; do
+        pkg_name="${spec%%==*}"
+        if compgen -G "${wheels_dir}/${pkg_name}-"*.whl >/dev/null 2>&1; then
+            print_info "[sdist] 已有 ${pkg_name} wheel，跳过"
+            continue
+        fi
+        print_info "[sdist] 使用 ${build_image} 编译 ${spec} wheel..."
+        docker run --rm \
+            -v "${wheels_dir}:/wheels" \
+            "$build_image" \
+            /bin/bash -lc "set -e
+pip install -q --upgrade pip wheel setuptools -i https://pypi.tuna.tsinghua.edu.cn/simple
+find_links=''
+if compgen -G '/wheels/${pkg_name}-*.tar.gz' >/dev/null; then
+  find_links='--find-links /wheels'
+fi
+pip wheel '${spec}' -w /wheels --no-deps \${find_links} -i https://pypi.tuna.tsinghua.edu.cn/simple"
+        if ! compgen -G "${wheels_dir}/${pkg_name}-"*.whl >/dev/null 2>&1; then
+            print_error "[sdist] 未生成 ${pkg_name} wheel"
+            return 1
+        fi
+        print_success "[sdist] ${pkg_name} wheel 已写入 ${wheels_dir}"
+    done
+}
+
 download_module_wheels() {
     local module="$1"
     local wheels_dir base_image flat_req status
@@ -135,6 +171,8 @@ download_module_wheels() {
         python3 -m pip download -r "$flat_req" -d "$wheels_dir" --timeout 120 --retries 3 \
             -i https://pypi.tuna.tsinghua.edu.cn/simple
     fi
+
+    build_required_sdist_wheels "$wheels_dir"
 
     print_success "[${module}] wheel 已保存到 ${wheels_dir}"
 }

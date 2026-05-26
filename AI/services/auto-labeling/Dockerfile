@@ -28,6 +28,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-auto-la
     apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
+        gcc \
+        python3-dev \
         libgl1 \
         libglib2.0-0 \
         libgomp1 \
