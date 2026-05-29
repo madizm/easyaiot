@@ -289,15 +289,13 @@ yolo_models = {}
 yolo_model_devices = {}  # {model_id: 'cpu' | 'cuda:N'}
 # 为每个摄像头创建独立的追踪器
 trackers = {}  # {device_id: SimpleTracker}
-# 为每个摄像头创建独立的帧缓存队列
-frame_buffers = {}  # {device_id: {frame_number: frame_data}}
-buffer_locks = {}  # {device_id: threading.Lock()}
 # 为每个摄像头创建独立的帧索引计数器
 frame_counts = {}  # {device_id: int}
-# 为每个摄像头创建独立的队列
-extract_queues = {}  # {device_id: queue.Queue}
+# 检测队列（缓流器 cron 抽帧直投，不经抽帧器中转）
 detection_queues = {}  # {device_id: queue.Queue}
-push_queues = {}  # {device_id: queue.Queue}
+# 待完成抓拍的帧（仅用于超时回收，检测完成后由 Worker 直接发告警/入库）
+pending_snapshots = {}  # {device_id: {frame_number: float}}  # frame_number -> timestamp
+pending_snapshot_locks = {}  # {device_id: threading.Lock()}
 # 摄像头流连接（VideoCapture 或 AsyncVideoStream）
 device_caps = {}  # {device_id: cv2.VideoCapture | AsyncVideoStream}
 # 告警抑制：记录每个设备上次告警推送时间
@@ -332,11 +330,14 @@ MAX_WAIT_TIME = float(os.getenv('MAX_WAIT_TIME', '0.08'))
 # YOLO检测参数（优化以降低CPU占用）
 YOLO_IMG_SIZE = int(os.getenv('YOLO_IMG_SIZE', '640'))  # 高清场景下提升小目标检测和叠框细节
 # 队列大小配置（优化以处理高负载）
-DETECTION_QUEUE_SIZE = int(os.getenv('DETECTION_QUEUE_SIZE', '100'))  # 检测队列大小（默认100，原50）
-PUSH_QUEUE_SIZE = int(os.getenv('PUSH_QUEUE_SIZE', '100'))  # 推帧队列大小（默认100，原50）
-EXTRACT_QUEUE_SIZE = int(os.getenv('EXTRACT_QUEUE_SIZE', '1'))  # 抽帧队列大小（默认50）
-# 检测工作线程数量（优化以提升处理能力）
-YOLO_WORKER_THREADS = int(os.getenv('YOLO_WORKER_THREADS', '2'))
+DETECTION_QUEUE_SIZE = int(os.getenv('DETECTION_QUEUE_SIZE', '20'))  # 抓拍低频，默认较小
+# 检测队列积压时保留最新 cron 帧（默认开启）
+DETECTION_KEEP_LATEST = os.getenv('DETECTION_KEEP_LATEST', 'true').strip().lower() in ('1', 'true', 'yes', 'on')
+DETECTION_KEEP_LATEST_THRESHOLD = int(
+    os.getenv('DETECTION_KEEP_LATEST_THRESHOLD', str(max(2, DETECTION_QUEUE_SIZE // 2)))
+)
+# 检测工作线程数量
+YOLO_WORKER_THREADS = int(os.getenv('YOLO_WORKER_THREADS', '1'))
 SNAPSHOT_RESULT_MAX_WAIT_SEC = float(os.getenv('SNAPSHOT_RESULT_MAX_WAIT_SEC', '5.0'))
 SNAPSHOT_CRON_WINDOW_SEC = float(os.getenv('SNAPSHOT_CRON_WINDOW_SEC', '5.0'))
 SNAP_SAVE_CRON_FRAME = (os.getenv('SNAP_SAVE_CRON_FRAME', '1').strip().lower() not in ('0', 'false', 'no', 'off'))
@@ -513,6 +514,145 @@ def _get_detect_conf() -> float:
         return float(os.getenv('YOLO_DETECT_CONF', '0.25'))
     except ValueError:
         return 0.25
+
+
+def _get_device_name(device_id: str) -> str:
+    if task_config and hasattr(task_config, 'device_streams'):
+        info = task_config.device_streams.get(device_id, {})
+        return info.get('device_name', device_id)
+    return device_id
+
+
+def _build_detection_payload(device_id: str, frame, frame_number: int, timestamp: float) -> dict:
+    return {
+        'frame_id': f"{device_id}_frame_{frame_number}_{int(timestamp)}",
+        'frame': frame.copy(),
+        'frame_number': frame_number,
+        'timestamp': timestamp,
+        'device_id': device_id,
+    }
+
+
+def _enqueue_detection_frame(device_id: str, payload: dict) -> bool:
+    """cron 抽帧直投检测队列；积压时丢弃旧帧，仅保留最新待检帧。"""
+    detection_queue = detection_queues.get(device_id)
+    if not detection_queue:
+        return False
+
+    frame_number = payload.get('frame_number', 0)
+    drained = 0
+
+    if DETECTION_KEEP_LATEST and detection_queue.qsize() >= DETECTION_KEEP_LATEST_THRESHOLD:
+        while True:
+            try:
+                detection_queue.get_nowait()
+                drained += 1
+            except queue.Empty:
+                break
+        if drained > 0:
+            logger.info(
+                f"🔄 设备 {device_id} 检测队列积压，丢弃 {drained} 帧旧数据，保留最新 cron 帧 {frame_number}"
+            )
+
+    try:
+        detection_queue.put(payload, timeout=0.2)
+        return True
+    except queue.Full:
+        if DETECTION_KEEP_LATEST:
+            while True:
+                try:
+                    detection_queue.get_nowait()
+                    drained += 1
+                except queue.Empty:
+                    break
+            try:
+                detection_queue.put(payload, timeout=0.05)
+                return True
+            except queue.Full:
+                pass
+        logger.warning(
+            f"⚠️  设备 {device_id} 检测队列已满，丢弃 cron 帧 {frame_number}（队列大小: {DETECTION_QUEUE_SIZE}）"
+        )
+        return False
+
+
+def _track_pending_snapshot(device_id: str, frame_number: int, timestamp: float):
+    lock = pending_snapshot_locks.setdefault(device_id, threading.Lock())
+    with lock:
+        pending_snapshots.setdefault(device_id, {})[frame_number] = timestamp
+
+
+def _untrack_pending_snapshot(device_id: str, frame_number: int):
+    lock = pending_snapshot_locks.get(device_id)
+    if not lock:
+        return
+    with lock:
+        pending_snapshots.get(device_id, {}).pop(frame_number, None)
+
+
+def _save_cron_snapshot_frame(device_id: str, frame_image, fn: int, frame_timestamp: float):
+    """定时抓拍：仅写入抓拍空间，不走告警/Kafka（无检测时不应产生告警记录）。"""
+    if not (task_config and SNAP_SAVE_CRON_FRAME):
+        return
+    try:
+        if upload_frame_to_snap_space(device_id, frame_image):
+            logger.info(
+                f"📷 设备 {device_id} 定时抓拍已入库（无检测目标，不产生告警）: 帧 {fn}"
+            )
+        else:
+            save_alert_image(
+                frame_image, device_id, fn, {'class_name': 'snapshot', 'track_id': 0}
+            )
+            logger.warning(
+                f"设备 {device_id} 抓拍空间上传失败，已仅落盘 alert_images: 帧 {fn}"
+            )
+    except Exception as e:
+        logger.error(f"设备 {device_id} 定时抓拍保存失败: {str(e)}", exc_info=True)
+
+
+def _finish_snapshot_detection(
+    device_id: str,
+    frame_number: int,
+    timestamp: float,
+    detections: list,
+    processed_frame,
+):
+    """检测完成后直接发告警或入库，不再经 push_queue 回写。"""
+    _untrack_pending_snapshot(device_id, frame_number)
+    device_name = _get_device_name(device_id)
+    if detections:
+        try_send_snapshot_detection_alert(
+            device_id,
+            device_name,
+            frame_number,
+            detections,
+            processed_frame,
+            timestamp,
+        )
+    else:
+        _save_cron_snapshot_frame(device_id, processed_frame, frame_number, timestamp)
+    logger.info(f"✅ 设备 {device_id} cron 帧 {frame_number} 处理完成")
+
+
+def _cleanup_stale_pending_snapshots(device_id: str):
+    """回收超时仍未完成检测的 cron 帧，防止 pending 累积。"""
+    now_ts = time.time()
+    timed_out = []
+    lock = pending_snapshot_locks.get(device_id)
+    if not lock:
+        return
+    with lock:
+        pending = pending_snapshots.get(device_id, {})
+        for fn, frame_ts in list(pending.items()):
+            if now_ts - frame_ts > SNAPSHOT_RESULT_MAX_WAIT_SEC:
+                timed_out.append(fn)
+        for fn in timed_out:
+            pending.pop(fn, None)
+    if timed_out:
+        logger.warning(
+            f"⚠️  设备 {device_id} 超时清理待检 cron 帧 {len(timed_out)} 个: {timed_out[:5]}"
+            f"{'...' if len(timed_out) > 5 else ''}"
+        )
 
 
 def _download_model_from_minio_direct(bucket_name: str, object_key: str, local_path: str) -> bool:
@@ -943,15 +1083,10 @@ def load_task_config():
 
         # 为每个摄像头初始化独立的资源
         for device_id, stream_info in device_streams.items():
-            # 初始化帧缓存队列
-            frame_buffers[device_id] = {}
-            buffer_locks[device_id] = threading.Lock()
             frame_counts[device_id] = 0
-
-            # 初始化队列（使用可配置的大小）
-            extract_queues[device_id] = queue.Queue(maxsize=EXTRACT_QUEUE_SIZE)
             detection_queues[device_id] = queue.Queue(maxsize=DETECTION_QUEUE_SIZE)
-            push_queues[device_id] = queue.Queue(maxsize=PUSH_QUEUE_SIZE)
+            pending_snapshots[device_id] = {}
+            pending_snapshot_locks[device_id] = threading.Lock()
 
             # 初始化cron相关变量（清理旧状态）
             if device_id in device_last_extract_cron_time:
@@ -1482,7 +1617,7 @@ def save_tracking_targets_periodically():
 
 
 def buffer_streamer_worker(device_id: str):
-    """缓流器工作线程：拉取源流，按 Cron 抽帧并等待检测结果后上报抓拍/告警"""
+    """缓流器：拉源流，cron 槽位抽帧直投检测队列，不阻塞等待检测结果。"""
     logger.info(f"💾 缓流器线程启动 [设备: {device_id}]")
 
     if not task_config or not hasattr(task_config, 'device_streams'):
@@ -1517,7 +1652,6 @@ def buffer_streamer_worker(device_id: str):
     cap = None
     frame_width = None
     frame_height = None
-    next_output_frame = 1
     retry_count = 0
     max_retries = 5
     rtsp_open_timeout_msec = int(os.getenv("RTSP_OPEN_TIMEOUT_MSEC", "5000"))
@@ -1525,12 +1659,10 @@ def buffer_streamer_worker(device_id: str):
     rtsp_retry_delay_sec = max(0.1, float(os.getenv("RTSP_RETRY_DELAY_SEC", "1")))
     rtsp_retry_cooldown_sec = max(1.0, float(os.getenv("RTSP_RETRY_COOLDOWN_SEC", "8")))
     rtsp_read_fail_delay_sec = max(0.1, float(os.getenv("RTSP_READ_FAIL_DELAY_SEC", "0.3")))
-    pending_frames = set()
 
     # 流畅度优化：基于时间戳的帧率控制
     frame_interval = 1.0 / SOURCE_FPS
     last_frame_time = time.time()
-    max_push_process_per_cycle = 20
 
     # 灰屏重连（默认开启；与实时算法服务一致，见 AI_RTSP_GRAY_*）
     _gray_reconnect = (os.getenv("AI_RTSP_GRAY_RECONNECT", "1").strip().lower() not in ("0", "false", "no", "off"))
@@ -1557,103 +1689,6 @@ def buffer_streamer_worker(device_id: str):
             f"📌 设备 {device_id} GB28181 源：重连时将重新解析播放地址；"
             f"异步 FIFO={gb28181_async_queue_max()}（AI_GB28181_ASYNC_QUEUE_MAX，与 realtime 一致）"
         )
-
-    def _save_cron_snapshot_frame(frame_image, fn: int, frame_timestamp: float):
-        """定时抓拍：仅写入抓拍空间，不走告警/Kafka（无检测时不应产生告警记录）。"""
-        if not (task_config and SNAP_SAVE_CRON_FRAME):
-            return
-        try:
-            if upload_frame_to_snap_space(device_id, frame_image):
-                logger.info(
-                    f"📷 设备 {device_id} 定时抓拍已入库（无检测目标，不产生告警）: 帧 {fn}"
-                )
-            else:
-                save_alert_image(
-                    frame_image, device_id, fn, {'class_name': 'snapshot', 'track_id': 0}
-                )
-                logger.warning(
-                    f"设备 {device_id} 抓拍空间上传失败，已仅落盘 alert_images: 帧 {fn}"
-                )
-        except Exception as e:
-            logger.error(f"设备 {device_id} 定时抓拍保存失败: {str(e)}", exc_info=True)
-
-    def process_detection_results_and_cleanup():
-        """异步消费检测结果并清理超时帧，避免检测慢导致延迟累积。"""
-        processed_count = 0
-        while processed_count < max_push_process_per_cycle:
-            try:
-                push_data = push_queues[device_id].get_nowait()
-                processed_frame = push_data['frame']
-                fn = push_data['frame_number']
-                detections = push_data.get('detections', [])
-
-                frame_data = None
-                with buffer_locks[device_id]:
-                    frame_buffer = frame_buffers[device_id]
-                    if fn in frame_buffer:
-                        frame_buffer[fn]['frame'] = processed_frame
-                        frame_buffer[fn]['processed'] = True
-                        frame_buffer[fn]['detections'] = detections
-                        frame_data = frame_buffer[fn]
-                    pending_frames.discard(fn)
-
-                # 帧可能已超时清理；若仍有检测结果，补发告警（使用带框图）
-                if not frame_data:
-                    if detections:
-                        frame_ts = push_data.get('timestamp', time.time())
-                        try_send_snapshot_detection_alert(
-                            device_id,
-                            device_name,
-                            fn,
-                            detections,
-                            processed_frame,
-                            frame_ts,
-                        )
-                    processed_count += 1
-                    continue
-
-                frame_timestamp = frame_data.get('timestamp', time.time())
-
-                if detections:
-                    try_send_snapshot_detection_alert(
-                        device_id,
-                        device_name,
-                        fn,
-                        detections,
-                        processed_frame,
-                        frame_timestamp,
-                    )
-                elif frame_data.get('is_extracted'):
-                    _save_cron_snapshot_frame(processed_frame, fn, frame_timestamp)
-
-                # 告警发送（或无告警）后清理该帧
-                with buffer_locks[device_id]:
-                    frame_buffer = frame_buffers[device_id]
-                    frame_buffer.pop(fn, None)
-                logger.info(f"✅ 设备 {device_id} 抽帧帧 {fn} 处理完成，已清理")
-                processed_count += 1
-            except queue.Empty:
-                break
-
-        # 超时清理：异步模式下定期回收过期未完成帧，防止延迟累积
-        now_ts = time.time()
-        timed_out_frames = []
-        with buffer_locks[device_id]:
-            frame_buffer = frame_buffers[device_id]
-            for fn, frame_data in list(frame_buffer.items()):
-                frame_ts = frame_data.get('timestamp', now_ts)
-                if now_ts - frame_ts > SNAPSHOT_RESULT_MAX_WAIT_SEC:
-                    timed_out_frames.append(fn)
-
-            for fn in timed_out_frames:
-                frame_buffer.pop(fn, None)
-                pending_frames.discard(fn)
-
-        if timed_out_frames:
-            logger.warning(
-                f"⚠️  设备 {device_id} 超时清理抓拍帧 {len(timed_out_frames)} 个: {timed_out_frames[:5]}"
-                f"{'...' if len(timed_out_frames) > 5 else ''}"
-            )
 
     while not stop_event.is_set():
         try:
@@ -1820,10 +1855,10 @@ def buffer_streamer_worker(device_id: str):
                         cap = None
                         device_caps.pop(device_id, None)
                     gray_bad_streak = 0
-                    process_detection_results_and_cleanup()
+                    _cleanup_stale_pending_snapshots(device_id)
                     time.sleep(max(0.5, _gray_reconnect_delay))
                     continue
-                process_detection_results_and_cleanup()
+                _cleanup_stale_pending_snapshots(device_id)
                 continue
             gray_bad_streak = 0
 
@@ -1833,7 +1868,7 @@ def buffer_streamer_worker(device_id: str):
             # 检查cron表达式，如果不在cron时间点，直接跳过这帧
             if not should_extract_frame_by_cron(device_id, current_timestamp):
                 # 不在cron时间点也要消费检测结果，避免结果堆积到下一次cron才处理
-                process_detection_results_and_cleanup()
+                _cleanup_stale_pending_snapshots(device_id)
                 continue
 
             # cron 槽位：预热期内不判花屏；花屏警告每个槽位只打一次
@@ -1864,7 +1899,7 @@ def buffer_streamer_worker(device_id: str):
                             f"{_cron_fire.strftime('%H:%M:%S') if _cron_fire else '?'} "
                             f"帧疑似解码花屏，窗口内将重试其它帧"
                         )
-                process_detection_results_and_cleanup()
+                _cleanup_stale_pending_snapshots(device_id)
                 continue
 
             # 到了cron时间点，处理这1帧
@@ -1877,60 +1912,17 @@ def buffer_streamer_worker(device_id: str):
             if (original_width, original_height) != TARGET_RESOLUTION:
                 frame = cv2.resize(frame, TARGET_RESOLUTION, interpolation=cv2.INTER_LANCZOS4)
 
-            # 将帧发送到抽帧队列进行分析（队列容量为1，新帧会顶掉旧帧）
-            pending_frames.add(frame_count)
-            frame_sent = False
-            try:
-                # 尝试直接放入
-                extract_queues[device_id].put_nowait({
-                    'frame': frame,
-                    'frame_number': frame_count,
-                    'timestamp': current_timestamp,
-                    'device_id': device_id
-                })
-                frame_sent = True
-                logger.info(
-                    f"📸 设备 {device_id} 在cron时间点抽帧: 帧号={frame_count}, 时间={datetime.fromtimestamp(current_timestamp).strftime('%Y-%m-%d %H:%M:%S')}")
-            except queue.Full:
-                # 队列已满，取出旧的帧（顶一个），再放入新的
-                try:
-                    old_frame_data = extract_queues[device_id].get_nowait()
-                    logger.debug(
-                        f"🔄 设备 {device_id} 抽帧队列已满，丢弃旧帧 {old_frame_data.get('frame_number')}，放入新帧 {frame_count}")
-                except queue.Empty:
-                    pass
-                # 再次尝试放入新帧
-                try:
-                    extract_queues[device_id].put_nowait({
-                        'frame': frame,
-                        'frame_number': frame_count,
-                        'timestamp': current_timestamp,
-                        'device_id': device_id
-                    })
-                    frame_sent = True
-                    logger.info(
-                        f"📸 设备 {device_id} 在cron时间点抽帧: 帧号={frame_count}, 时间={datetime.fromtimestamp(current_timestamp).strftime('%Y-%m-%d %H:%M:%S')}")
-                except queue.Full:
-                    logger.warning(f"⚠️  设备 {device_id} 抽帧队列放入失败，帧 {frame_count} 被丢弃")
-
-            if frame_sent:
+            # cron 槽位：直投检测队列（不经抽帧器），检测完成后 Worker 直接发告警/入库
+            payload = _build_detection_payload(device_id, frame, frame_count, current_timestamp)
+            if _enqueue_detection_frame(device_id, payload):
+                _track_pending_snapshot(device_id, frame_count, current_timestamp)
                 mark_cron_slot_captured(device_id, current_timestamp)
+                logger.info(
+                    f"📸 设备 {device_id} cron 抽帧已入检测队列: 帧号={frame_count}, "
+                    f"时间={datetime.fromtimestamp(current_timestamp).strftime('%Y-%m-%d %H:%M:%S')}"
+                )
 
-            # 将帧存入缓冲区（仅用于等待检测结果和发送告警）
-            with buffer_locks[device_id]:
-                frame_buffer = frame_buffers[device_id]
-                frame_buffer[frame_count] = {
-                    'frame': frame,
-                    'frame_number': frame_count,
-                    'timestamp': current_timestamp,
-                    'processed': False,
-                    'is_extracted': True  # 标记为抽帧的帧
-                }
-
-            # 低延迟模式：抽帧后不阻塞等待检测结果，继续读取最新流帧。
-            # 检测结果在下方异步消费并发送告警，避免单帧慢检测拖慢整体。
-
-            process_detection_results_and_cleanup()
+            _cleanup_stale_pending_snapshots(device_id)
 
             # 优化CPU占用：短暂休眠，避免频繁读取帧
             time.sleep(0.1)  # 100ms
@@ -1945,75 +1937,6 @@ def buffer_streamer_worker(device_id: str):
         device_caps.pop(device_id, None)
 
     logger.info(f"💾 设备 {device_id} 缓流器线程停止")
-
-def extractor_worker():
-    """抽帧器工作线程：从多个摄像头的缓流器获取帧，抽帧并标记位置"""
-    logger.info("📹 抽帧器线程启动（多摄像头并行）")
-
-    idle_count = 0
-    max_idle_count = 10
-
-    while not stop_event.is_set():
-        try:
-            # 尝试从每个设备的队列中获取帧（带超时）
-            device_queue_items = list(extract_queues.items())
-            frame_data = None
-            device_id = None
-            extract_queue = None
-
-            for device_id, extract_queue in device_queue_items:
-                try:
-                    frame_data = extract_queue.get(timeout=0.1)
-                    break  # 成功获取到一个帧，跳出循环
-                except queue.Empty:
-                    continue
-                except Exception as e:
-                    logger.error(f"❌ 设备 {device_id} 队列获取异常: {str(e)}")
-                    continue
-
-            if frame_data is not None:
-                # 处理帧
-                frame = frame_data['frame']
-                frame_number = frame_data['frame_number']
-                timestamp = frame_data['timestamp']
-                device_id_from_data = frame_data.get('device_id', device_id)
-                frame_id = f"{device_id_from_data}_frame_{frame_number}_{int(timestamp)}"
-
-                # 将帧发送给YOLO检测（带设备ID和位置信息）
-                detection_queue = detection_queues.get(device_id_from_data)
-                if detection_queue:
-                    try:
-                        detection_queue.put({
-                            'frame_id': frame_id,
-                            'frame': frame.copy(),
-                            'frame_number': frame_number,
-                            'timestamp': timestamp,
-                            'device_id': device_id_from_data
-                        }, timeout=0.2)
-                        if frame_number % 10 == 0:
-                            logger.info(f"✅ 抽帧器 [{device_id_from_data}]: {frame_id} (帧号: {frame_number})")
-                    except queue.Full:
-                        logger.warning(
-                            f"⚠️  设备 {device_id_from_data} 检测队列已满，丢弃帧 {frame_id}（队列大小: {DETECTION_QUEUE_SIZE}）")
-                        # 尝试丢弃一个旧帧以腾出空间
-                        try:
-                            detection_queue.get_nowait()
-                            logger.debug(f"🔄 设备 {device_id_from_data} 检测队列满，丢弃最旧帧以腾出空间")
-                        except queue.Empty:
-                            pass
-
-                idle_count = 0  # 重置空闲计数器
-            else:
-                # 没有找到工作，增加空闲计数并采用指数退避休眠
-                idle_count += 1
-                sleep_time = min(0.05 * (2 ** idle_count), 1.0)  # 指数退避，最大1秒
-                time.sleep(sleep_time)
-
-        except Exception as e:
-            logger.error(f"❌ 抽帧器异常: {str(e)}", exc_info=True)
-            time.sleep(1)
-
-    logger.info("📹 抽帧器线程停止")
 
 
 def draw_detections(frame, tracked_detections, frame_number=None, tracking_enabled=False):
@@ -2223,29 +2146,17 @@ def yolo_detection_worker(worker_id: int):
                         'duration': tracked_det.get('duration', 0.0)
                     })
 
-                # 将处理后的帧发送到推帧队列（带超时）
-                push_queue = push_queues.get(device_id_from_data)
-                if push_queue:
-                    try:
-                        push_queue.put({
-                            'frame': processed_frame,
-                            'frame_number': frame_number,
-                            'detections': detections,
-                            'device_id': device_id_from_data,
-                            'timestamp': timestamp
-                        }, timeout=0.2)
-                        logger.info(
-                            f"✅ [Worker {worker_id}] 检测完成: {frame_id}, 目标数={len(detections)}"
-                        )
-                    except queue.Full:
-                        logger.warning(
-                            f"⚠️  设备 {device_id_from_data} 推帧队列已满，丢弃帧 {frame_id}（队列大小: {PUSH_QUEUE_SIZE}）")
-                        # 尝试丢弃一个旧帧以腾出空间
-                        try:
-                            push_queue.get_nowait()
-                            logger.debug(f"🔄 设备 {device_id_from_data} 推帧队列满，丢弃最旧帧以腾出空间")
-                        except queue.Empty:
-                            pass
+                # 检测完成：直接发告警或入库（不经 push_queue 回写）
+                _finish_snapshot_detection(
+                    device_id_from_data,
+                    frame_number,
+                    timestamp,
+                    detections,
+                    processed_frame,
+                )
+                logger.info(
+                    f"✅ [Worker {worker_id}] 检测完成: {frame_id}, 目标数={len(detections)}"
+                )
             else:
                 # 没有找到工作，增加空闲计数并采用指数退避休眠
                 idle_count += 1
@@ -2328,9 +2239,10 @@ def main():
     logger.info(f"   视频分辨率: {TARGET_WIDTH}x{TARGET_HEIGHT} (原1280x720)")
     logger.info(f"   视频帧率: {SOURCE_FPS}fps (原25fps)")
     logger.info(f"   YOLO检测分辨率: {YOLO_IMG_SIZE} (原640)")
-    logger.info(f"   检测队列大小: {DETECTION_QUEUE_SIZE} (原50)")
-    logger.info(f"   推帧队列大小: {PUSH_QUEUE_SIZE} (原50)")
-    logger.info(f"   YOLO检测线程数: {YOLO_WORKER_THREADS} (原1)")
+    logger.info(f"   检测队列大小: {DETECTION_QUEUE_SIZE}")
+    logger.info(f"   检测保留最新帧: {DETECTION_KEEP_LATEST} (阈值: {DETECTION_KEEP_LATEST_THRESHOLD})")
+    logger.info(f"   YOLO检测线程数: {YOLO_WORKER_THREADS}")
+    logger.info(f"   待检超时: {SNAPSHOT_RESULT_MAX_WAIT_SEC}s")
     logger.info("=" * 60)
 
     # 注册信号处理器
@@ -2361,12 +2273,7 @@ def main():
             buffer_thread.start()
             buffer_threads.append(buffer_thread)
 
-    # 启动共享的抽帧器线程（处理所有摄像头）
-    logger.info("📹 启动抽帧器线程（多摄像头并行）...")
-    extractor_thread = threading.Thread(target=extractor_worker, daemon=True)
-    extractor_thread.start()
-
-    # 启动 YOLO 检测线程池（与 realtime_algorithm_service 一致）
+    # 启动 YOLO 检测线程池（cron 帧直投检测队列，Worker 完成后直接发告警/入库）
     logger.info(f"🤖 启动 {YOLO_WORKER_THREADS} 个YOLO检测线程（多摄像头并行）...")
     global yolo_executor
     yolo_executor = concurrent.futures.ThreadPoolExecutor(
