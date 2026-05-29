@@ -17,13 +17,13 @@ RUN npm install -g pnpm@11.3.0 && \
 WORKDIR /app
 RUN mkdir -p /tmp/web-build-logs /pnpm
 
-# 先复制依赖清单（利用层缓存）；pnpm-lock.yaml 在 .gitignore 中，客户 clone 后可能不存在
-COPY package.json pnpm-workspace.yaml ./
+# 先复制依赖清单（利用层缓存）；registry 与 fetch 配置已通过上方 pnpm config set 设置
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
 # 预拉依赖到 store（持久化见 install_linux.sh --cache-from/--cache-to type=local）
 RUN --mount=type=cache,target=/pnpm/store,id=web-pnpm-store \
     pnpm config set store-dir /pnpm/store && \
-    pnpm fetch 2>&1 | tee /tmp/web-build-logs/pnpm-fetch.log || true
+    pnpm fetch --frozen-lockfile 2>&1 | tee /tmp/web-build-logs/pnpm-fetch.log || true
 
 # 源码变更或 install_linux.sh clean 后通过 CACHE_BUST 使后续层失效（避免命中 CACHED 跳过 pnpm build）
 ARG CACHE_BUST=0
@@ -34,12 +34,7 @@ COPY . .
 # 必须在 COPY 源码后 install，否则 node_modules 不完整（cross-env not found）
 RUN --mount=type=cache,target=/pnpm/store,id=web-pnpm-store \
     pnpm config set store-dir /pnpm/store && \
-    if [ -f pnpm-lock.yaml ]; then \
-        pnpm install --frozen-lockfile; \
-    else \
-        echo "=== 无 pnpm-lock.yaml，按 package.json 安装依赖 ==="; \
-        pnpm install; \
-    fi 2>&1 | tee /tmp/web-build-logs/pnpm-install.log && \
+    pnpm install --frozen-lockfile 2>&1 | tee /tmp/web-build-logs/pnpm-install.log && \
     test -x node_modules/.bin/cross-env || (echo "=== pnpm install 未生成 node_modules/.bin/cross-env ===" && exit 1)
 
 # vite 打包通常需数分钟；用 tee 同时写日志，避免终端长时间无输出像卡住
