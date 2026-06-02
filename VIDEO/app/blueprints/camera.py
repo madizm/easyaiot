@@ -1354,13 +1354,30 @@ def scan_segment_devices():
             return jsonify({'code': 400, 'msg': 'credentials 须为数组'}), 400
         ports = (data.get('ports') or '80,443,8000,8443').strip()
         concurrency = int(data.get('concurrency') or 200)
-        timeout = float(data.get('timeout') or 5.0)
+        timeout = float(data.get('timeout') or 3.0)
+        if timeout < 0.5 or timeout > 30:
+            return jsonify({'code': 400, 'msg': '单点超时需在 0.5–30 秒之间'}), 400
         only_hits = bool(data.get('only_hits', True))
         nvr_only = bool(data.get('nvr_only', False))
         exclude_nvr = bool(data.get('exclude_nvr', False))
 
         if concurrency < 1 or concurrency > 2000:
             return jsonify({'code': 400, 'msg': '并发数需在 1–2000 之间'}), 400
+
+        from app.vendor.hiktools.core.targets import MAX_SCAN_TASKS, estimate_scan_tasks
+
+        try:
+            task_count = estimate_scan_tasks(targets, ports)
+        except ValueError as e:
+            return jsonify({'code': 400, 'msg': str(e)}), 400
+        if task_count > MAX_SCAN_TASKS:
+            return jsonify({
+                'code': 400,
+                'msg': (
+                    f'扫描目标过多（约 {task_count} 个探测点），请缩小网段或范围'
+                    f'（单次上限 {MAX_SCAN_TASKS}）'
+                ),
+            }), 400
 
         devices = scan_segment(
             targets,

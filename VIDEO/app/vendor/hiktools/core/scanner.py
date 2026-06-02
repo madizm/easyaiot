@@ -79,16 +79,17 @@ def _make_ssl_context() -> ssl.SSLContext:
     return ctx
 
 
-async def scan_one(
+async def _scan_one_probes(
     client: httpx.AsyncClient,
     ip: str,
     port: int,
     credentials: Sequence[Credential],
     timeout: float,
+    device: Device,
 ) -> Device:
     scheme = _scheme_for_port(port)
     base_url = f"{scheme}://{ip}:{port}"
-    device = Device(ip=ip, port=port, scheme=scheme, source="http")
+    device.scheme = scheme
 
     if not await _tcp_open(ip, port, timeout):
         device.error = "tcp_closed"
@@ -149,16 +150,49 @@ async def scan_one(
             device.evidence["dahua_device_class"] = parse_dahua_device_class(
                 dc_res.body
             )
+            if dc_res.used_credential:
+                device.evidence["authenticated_as"] = dc_res.used_credential.username
 
     _apply_vendor_device_info(device, ev.vendor, xml_body, isapi, vendor_probe)
     device.device_role = infer_device_role(device)
+    preferred_cred = (
+        isapi.used_credential
+        or vendor_probe.dahua_used_credential
+        or vendor_probe.huawei_used_credential
+    )
     device.rtsp_url = build_device_rtsp_url(
         device,
         credentials,
-        preferred=isapi.used_credential,
+        preferred=preferred_cred,
     )
 
     return device
+
+
+def scan_one_budget(timeout: float) -> float:
+    """单 (ip, port) 探测总时长上限，避免串行 HTTP 探测累积过久。"""
+    t = max(0.5, float(timeout))
+    return min(20.0, max(6.0, t * 4.0))
+
+
+async def scan_one(
+    client: httpx.AsyncClient,
+    ip: str,
+    port: int,
+    credentials: Sequence[Credential],
+    timeout: float,
+) -> Device:
+    scheme = _scheme_for_port(port)
+    device = Device(ip=ip, port=port, scheme=scheme, source="http")
+    budget = scan_one_budget(timeout)
+    try:
+        return await asyncio.wait_for(
+            _scan_one_probes(client, ip, port, credentials, timeout, device),
+            timeout=budget,
+        )
+    except asyncio.TimeoutError:
+        device.error = "probe_timeout"
+        return device
 
 
 _ISAPI_VENDORS = frozenset({VENDOR_HIKVISION, VENDOR_EZVIZ})
@@ -190,8 +224,9 @@ def _apply_vendor_device_info(
         device.device_name = parsed.get("device_name") or device.device_name
         device.mac = parsed.get("mac") or device.mac
         device.source = "dahua_cgi"
-        if isapi.used_credential:
-            device.evidence["authenticated_as"] = isapi.used_credential.username
+        dahua_cred = vendor_probe.dahua_used_credential or isapi.used_credential
+        if dahua_cred:
+            device.evidence["authenticated_as"] = dahua_cred.username
     elif vendor_probe.huawei_body and vendor == VENDOR_HUAWEI:
         parsed = parse_huawei_cgi(vendor_probe.huawei_body)
         device.model = parsed.get("model") or device.model
@@ -201,6 +236,8 @@ def _apply_vendor_device_info(
         device.device_type = parsed.get("device_type") or device.device_type
         device.mac = parsed.get("mac") or device.mac
         device.source = "huawei_cgi"
+        if vendor_probe.huawei_used_credential:
+            device.evidence["authenticated_as"] = vendor_probe.huawei_used_credential.username
 
 
 ProgressCb = Callable[[int, int, Device], None]

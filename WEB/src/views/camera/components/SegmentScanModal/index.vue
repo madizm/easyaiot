@@ -20,22 +20,23 @@
         />
         <Form layout="vertical" class="scan-form">
           <Row :gutter="16">
-            <Col :span="24">
-              <FormItem label="扫描目标" required>
-                <Input.TextArea
+            <Col :span="24" class="scan-form-field-line">
+              <FormItem label="扫描目标" name="targets" required :rules="targetsFormRules">
+                <SegmentScanTargetsField
                   v-model:value="form.targets"
-                  :rows="3"
-                  placeholder="示例：&#10;192.168.1.0/24&#10;10.0.0.1-10.0.0.50&#10;1.2.3.4:8080"
-                  :disabled="state.scanning"
+                  :mode="state.mode"
+                  :disabled="state.scanning || state.registering"
+                  :refresh-token="historyRefreshToken"
+                  @apply-history="applyHistoryEntry"
                 />
               </FormItem>
             </Col>
-            <Col :span="24">
+            <Col :span="12" class="scan-form-field-half">
               <FormItem label="端口">
                 <Input v-model:value="form.ports" placeholder="80,443,8000,8443" :disabled="state.scanning" />
               </FormItem>
             </Col>
-            <Col :span="24">
+            <Col :span="24" class="scan-form-field-line">
               <FormItem label="Web 登录凭证" required>
                 <div class="credentials-block">
                   <div
@@ -79,8 +80,8 @@
               </FormItem>
             </Col>
             <Col :span="6">
-              <FormItem label="超时(秒)">
-                <InputNumber v-model:value="form.timeout" :min="0.5" :max="60" :step="0.5" style="width: 100%" />
+              <FormItem label="单点超时(秒)">
+                <InputNumber v-model:value="form.timeout" :min="0.5" :max="30" :step="0.5" style="width: 100%" />
               </FormItem>
             </Col>
             <Col :span="12">
@@ -201,7 +202,7 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, reactive } from 'vue';
+import { computed, reactive, ref } from 'vue';
 import {
   Alert,
   Checkbox,
@@ -231,6 +232,22 @@ import {
   getCameraScanColumns,
   getNvrScanColumns,
 } from './Data';
+import {
+  hasSegmentScanRegisterPayload,
+  isSegmentScanCredentialAccessible,
+  resolveSegmentScanRtsp,
+} from '@/views/camera/utils/segmentScanRegister';
+import {
+  cloneCredentials,
+  saveSegmentScanHistory,
+  type SegmentScanHistoryEntry,
+} from '@/views/camera/utils/segmentScanHistory';
+import SegmentScanTargetsField from '@/views/camera/components/DeviceCreate/SegmentScanTargetsField.vue';
+import {
+  computeSegmentScanWallSeconds,
+  segmentScanTargetsFormRule,
+  validateSegmentScanTargets,
+} from '@/views/camera/utils/segmentScanTargetsValidate';
 
 defineOptions({ name: 'SegmentScanModal' });
 
@@ -262,9 +279,41 @@ const form = reactive({
   ports: '80,443,8000,8443',
   credentials: [{ username: 'admin', password: '' }] as CredentialPair[],
   concurrency: 200,
-  timeout: 5,
+  timeout: 3,
   only_hits: true,
 });
+
+const historyRefreshToken = ref(0);
+
+const targetsFormRules = [
+  segmentScanTargetsFormRule(() => form.ports.trim() || undefined),
+];
+
+function applyHistoryEntry(entry: SegmentScanHistoryEntry) {
+  form.targets = entry.targets;
+  form.ports = entry.ports;
+  form.concurrency = entry.concurrency;
+  form.timeout = entry.timeout;
+  form.only_hits = entry.only_hits;
+  const creds = cloneCredentials(entry.credentials);
+  form.credentials.splice(0, form.credentials.length, ...(creds.length ? creds : [{ username: 'admin', password: '' }]));
+  state.devices = [];
+  resetRegisterStatus();
+}
+
+function persistScanHistory(deviceCount: number) {
+  saveSegmentScanHistory({
+    mode: state.mode,
+    targets: form.targets.trim(),
+    ports: form.ports.trim() || '80,443,8000,8443',
+    credentials: getValidCredentials(),
+    concurrency: form.concurrency,
+    timeout: form.timeout,
+    only_hits: form.only_hits,
+    lastDeviceCount: deviceCount,
+  });
+  historyRefreshToken.value += 1;
+}
 
 function getValidCredentials(): CredentialPair[] {
   return form.credentials
@@ -281,31 +330,52 @@ function resolveCredential(authUsername?: string): CredentialPair {
   return list[0];
 }
 
-/** 凭证探测成功且具备注册所需信息 */
-function isCredentialAccessible(record: SegmentScanDeviceRow): boolean {
-  return !!(record.auth_username && String(record.auth_username).trim());
+function hasFormCredentials(): boolean {
+  return getValidCredentials().length > 0;
 }
 
-/** 摄像头：有 RTSP；NVR：有认证用户即可登记 */
+function isCredentialAccessible(record: SegmentScanDeviceRow): boolean {
+  return isSegmentScanCredentialAccessible(record, state.mode, hasFormCredentials());
+}
+
 function hasRegisterPayload(record: SegmentScanDeviceRow): boolean {
-  if (state.mode === 'nvr') {
-    return isCredentialAccessible(record);
-  }
-  return !!record.rtsp_url;
+  const cred = resolveCredential(record.auth_username);
+  return hasSegmentScanRegisterPayload(
+    record,
+    state.mode,
+    cred,
+    isCredentialAccessible(record),
+  );
 }
 
 function isAlreadyRegistered(ip: string): boolean {
   return state.registerStatusMap[ip] === 'success';
 }
 
-function canRegisterRecord(record: SegmentScanDeviceRow): boolean {
+function isRecordRegistrable(record: SegmentScanDeviceRow): boolean {
   if (isAlreadyRegistered(record.ip)) return false;
+  return hasRegisterPayload(record);
+}
+
+function canRegisterRecord(record: SegmentScanDeviceRow): boolean {
   if (state.batchRegistering || state.registering) return false;
-  return isCredentialAccessible(record) && hasRegisterPayload(record);
+  return isRecordRegistrable(record);
+}
+
+function warnCannotRegisterNvr(record: SegmentScanDeviceRow) {
+  if (!hasFormCredentials()) {
+    createMessage.warning('请至少填写一组登录凭证');
+  } else if (isAlreadyRegistered(record.ip)) {
+    createMessage.warning('该 NVR 已登记');
+  } else if (!record.is_nvr && !record.is_recognized && !record.vendor) {
+    createMessage.warning('该设备未识别为 NVR，无法登记');
+  } else {
+    createMessage.warning('缺少登记所需信息，请确认登录凭证与扫描结果');
+  }
 }
 
 function getRegistrableDevices(): SegmentScanDeviceRow[] {
-  return state.devices.filter((d) => canRegisterRecord(d));
+  return state.devices.filter((d) => isRecordRegistrable(d));
 }
 
 const registrableCount = computed(() => getRegistrableDevices().length);
@@ -323,9 +393,11 @@ function registerStatusLabel(ip: string, record: SegmentScanDeviceRow): string {
   if (st === 'success') return '已注册';
   if (st === 'failed') return '注册失败';
   if (st === 'skipped') return '已跳过';
-  if (!isCredentialAccessible(record)) return '未认证';
+  if (!isCredentialAccessible(record)) {
+    return state.mode === 'nvr' && hasFormCredentials() ? '待凭证探测' : '未认证';
+  }
   if (!hasRegisterPayload(record)) return state.mode === 'nvr' ? '不可登记' : '无 RTSP';
-  return '可注册';
+  return state.mode === 'nvr' ? '可登记' : '可注册';
 }
 
 function registerStatusColor(ip: string): string {
@@ -406,8 +478,9 @@ function vendorToCameraType(vendor?: string): string {
 }
 
 async function handleScan() {
-  if (!form.targets.trim()) {
-    createMessage.warning('请填写扫描目标');
+  const targetCheck = validateSegmentScanTargets(form.targets, form.ports.trim() || undefined);
+  if (!targetCheck.valid) {
+    createMessage.warning(targetCheck.message || '扫描目标格式无效');
     return;
   }
   const credentials = getValidCredentials();
@@ -415,23 +488,25 @@ async function handleScan() {
     createMessage.warning('请至少填写一组用户名');
     return;
   }
+  const scanPayload = {
+    targets: form.targets.trim(),
+    credentials,
+    ports: form.ports.trim() || undefined,
+    concurrency: form.concurrency,
+    timeout: form.timeout,
+    only_hits: form.only_hits,
+    nvr_only: state.mode === 'nvr',
+    exclude_nvr: state.mode === 'camera',
+  };
   state.scanning = true;
-  state.scanProgress = '正在扫描，请稍候…';
+  state.scanProgress = `正在扫描，预计最多 ${computeSegmentScanWallSeconds(scanPayload)} 秒…`;
   state.devices = [];
   resetRegisterStatus();
   try {
-    const res = await scanSegmentDevices({
-      targets: form.targets.trim(),
-      credentials,
-      ports: form.ports.trim() || undefined,
-      concurrency: form.concurrency,
-      timeout: form.timeout,
-      only_hits: form.only_hits,
-      nvr_only: state.mode === 'nvr',
-      exclude_nvr: state.mode === 'camera',
-    });
+    const res = await scanSegmentDevices(scanPayload);
     const list = (res as { data?: SegmentScanDeviceRow[] })?.data ?? (res as SegmentScanDeviceRow[]) ?? [];
     state.devices = Array.isArray(list) ? list : [];
+    persistScanHistory(state.devices.length);
     if (!state.devices.length) {
       createMessage.info(state.mode === 'nvr' ? '未发现 NVR 设备' : '未发现可识别设备');
     } else {
@@ -448,10 +523,14 @@ async function handleScan() {
 }
 
 async function registerOneNvr(record: SegmentScanDeviceRow, silent = false): Promise<boolean> {
-  if (!canRegisterRecord(record)) return false;
+  if (!isRecordRegistrable(record)) {
+    if (!silent) warnCannotRegisterNvr(record);
+    return false;
+  }
   const cred = resolveCredential(record.auth_username);
   const credentials = getValidCredentials();
   state.registeringIp = record.ip;
+  if (!state.batchRegistering) state.registering = true;
   try {
     const res = await registerNvrWithChannels({
       ip: record.ip,
@@ -483,11 +562,12 @@ async function registerOneNvr(record: SegmentScanDeviceRow, silent = false): Pro
     return false;
   } finally {
     if (state.registeringIp === record.ip) state.registeringIp = '';
+    if (!state.batchRegistering) state.registering = false;
   }
 }
 
 async function registerOneCamera(record: SegmentScanDeviceRow, silent = false): Promise<boolean> {
-  if (!canRegisterRecord(record)) {
+  if (!isRecordRegistrable(record)) {
     if (!silent) {
       if (!isCredentialAccessible(record)) {
         createMessage.warning('该设备未通过凭证认证，无法注册');
@@ -497,9 +577,14 @@ async function registerOneCamera(record: SegmentScanDeviceRow, silent = false): 
     }
     return false;
   }
-  const source = record.rtsp_url!;
   const cred = resolveCredential(record.auth_username);
+  const source = resolveSegmentScanRtsp(record, cred);
+  if (!source) {
+    if (!silent) createMessage.warning('无法生成 RTSP 地址');
+    return false;
+  }
   state.registeringIp = record.ip;
+  if (!state.batchRegistering) state.registering = true;
   try {
     await registerDevice({
       name: record.device_name || `${record.vendor_label || '设备'}-${record.ip}`,
@@ -527,27 +612,16 @@ async function registerOneCamera(record: SegmentScanDeviceRow, silent = false): 
     return false;
   } finally {
     if (state.registeringIp === record.ip) state.registeringIp = '';
+    if (!state.batchRegistering) state.registering = false;
   }
 }
 
 async function handleRegisterNvrWithChannels(record: SegmentScanDeviceRow) {
-  state.registering = true;
-  try {
-    const ok = await registerOneNvr(record);
-    if (ok) emit('success');
-  } finally {
-    state.registering = false;
-  }
+  if (await registerOneNvr(record)) emit('success');
 }
 
 async function handleRegisterCamera(record: SegmentScanDeviceRow) {
-  state.registering = true;
-  try {
-    const ok = await registerOneCamera(record);
-    if (ok) emit('success');
-  } finally {
-    state.registering = false;
-  }
+  if (await registerOneCamera(record)) emit('success');
 }
 
 async function handleBatchRegister() {
@@ -604,6 +678,15 @@ function handleClose() {
   }
   .scan-form {
     margin-bottom: 8px;
+    max-width: 680px;
+
+    .scan-form-field-line {
+      max-width: 560px;
+    }
+
+    .scan-form-field-half {
+      max-width: 480px;
+    }
   }
   .scan-actions {
     display: flex;

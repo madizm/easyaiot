@@ -37,8 +37,10 @@ class VendorProbeResult:
     dahua_body: str | None = None
     dahua_status: int | None = None
     dahua_www_authenticate: str | None = None
+    dahua_used_credential: Credential | None = None
     huawei_body: str | None = None
     huawei_status: int | None = None
+    huawei_used_credential: Credential | None = None
     errors: dict[str, str] = field(default_factory=dict)
 
 
@@ -47,12 +49,12 @@ async def _get_path(
     url: str,
     credentials: Iterable[Credential],
     timeout: float,
-) -> tuple[int | None, str | None, str | None, str | None]:
-    """Returns status, body, error, www_authenticate."""
+) -> tuple[int | None, str | None, str | None, str | None, Credential | None]:
+    """Returns status, body, error, www_authenticate, used_credential."""
     try:
         r = await client.get(url, timeout=timeout)
     except (httpx.TimeoutException, httpx.TransportError) as e:
-        return None, None, str(e), None
+        return None, None, str(e), None, None
 
     challenge = r.headers.get("WWW-Authenticate")
     if r.status_code == 401:
@@ -71,10 +73,11 @@ async def _get_path(
                     ra.text,
                     None,
                     challenge or ra.headers.get("WWW-Authenticate"),
+                    cred,
                 )
-        return r.status_code, r.text, None, challenge
+        return r.status_code, r.text, None, challenge, None
 
-    return r.status_code, r.text, None, challenge
+    return r.status_code, r.text, None, challenge, None
 
 
 def _dahua_cgi_hit(status: int | None, body: str | None) -> bool:
@@ -96,7 +99,7 @@ async def probe_vendors(
     base = base_url.rstrip("/")
 
     for path in DAHUA_MAGICBOX_PATHS:
-        status, body, err, www_auth = await _get_path(
+        status, body, err, www_auth, used_cred = await _get_path(
             client, base + path, credentials, timeout
         )
         if err:
@@ -104,6 +107,8 @@ async def probe_vendors(
             continue
         if www_auth and not result.dahua_www_authenticate:
             result.dahua_www_authenticate = www_auth
+        if used_cred and not result.dahua_used_credential:
+            result.dahua_used_credential = used_cred
         if _dahua_cgi_hit(status, body):
             result.dahua_body = body
             result.dahua_status = status
@@ -115,12 +120,14 @@ async def probe_vendors(
                 break
 
     for path in HUAWEI_PATHS:
-        status, body, err, _www = await _get_path(
+        status, body, err, _www, used_cred = await _get_path(
             client, base + path, credentials, timeout
         )
         if err:
             result.errors[f"huawei:{path}"] = err
             continue
+        if used_cred and not result.huawei_used_credential:
+            result.huawei_used_credential = used_cred
         if status == 200 and body:
             result.huawei_body = body
             result.huawei_status = status

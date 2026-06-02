@@ -8,8 +8,8 @@ from typing import Any, Sequence
 from app.vendor.hiktools.core.device_role import is_nvr_role, role_label
 from app.vendor.hiktools.core.models import Credential, Device
 from app.vendor.hiktools.core.nvr import inventory_nvr
-from app.vendor.hiktools.core.scanner import scan
-from app.vendor.hiktools.core.targets import parse_ports, parse_targets
+from app.vendor.hiktools.core.scanner import scan, scan_one_budget
+from app.vendor.hiktools.core.targets import estimate_scan_tasks, parse_ports, parse_targets
 from app.vendor.hiktools.core.vendors import vendor_label
 
 DEFAULT_PORTS = "80,443,8000,8443"
@@ -98,6 +98,20 @@ def _aggregate_by_ip(devices: Sequence[Device]) -> list[dict[str, Any]]:
     return rows
 
 
+def estimate_scan_wall_timeout(
+    targets_raw: str,
+    *,
+    ports_spec: str = DEFAULT_PORTS,
+    concurrency: int = 200,
+    timeout: float = 3.0,
+) -> float:
+    """估算整次网段扫描最长等待时间（秒）。"""
+    task_count = max(1, estimate_scan_tasks(targets_raw, ports_spec))
+    batches = (task_count + max(1, concurrency) - 1) // max(1, concurrency)
+    per_task = scan_one_budget(timeout)
+    return min(300.0, max(15.0, batches * per_task + 8.0))
+
+
 async def _run_segment_scan(
     targets_raw: str,
     *,
@@ -106,37 +120,52 @@ async def _run_segment_scan(
     password: str | None = None,
     credentials: Sequence[dict[str, Any]] | None = None,
     concurrency: int = 200,
-    timeout: float = 5.0,
+    timeout: float = 3.0,
     only_hits: bool = True,
     nvr_only: bool = False,
     exclude_nvr: bool = False,
 ) -> list[dict[str, Any]]:
-    ports = parse_ports(ports_spec)
-    targets = parse_targets(targets_raw, ports=ports)
-    if not targets:
-        raise ValueError("解析后目标列表为空，请填写有效网段或 IP")
-
-    creds = _parse_credentials(username, password, credentials)
-    devices: list[Device] = []
-    async for item in scan(
-        targets,
-        credentials=creds,
+    wall = estimate_scan_wall_timeout(
+        targets_raw,
+        ports_spec=ports_spec,
         concurrency=concurrency,
         timeout=timeout,
-        only_hits=only_hits,
-    ):
-        if nvr_only and not is_nvr_role(item.device_role):
-            continue
-        if exclude_nvr and is_nvr_role(item.device_role):
-            continue
-        devices.append(item)
+    )
 
-    rows = _aggregate_by_ip(devices)
-    if nvr_only:
-        rows = [r for r in rows if r.get("is_nvr")]
-    elif exclude_nvr:
-        rows = [r for r in rows if not r.get("is_nvr")]
-    return rows
+    async def _inner() -> list[dict[str, Any]]:
+        ports = parse_ports(ports_spec)
+        targets = parse_targets(targets_raw, ports=ports)
+        if not targets:
+            raise ValueError("解析后目标列表为空，请填写有效网段或 IP")
+
+        creds = _parse_credentials(username, password, credentials)
+        devices: list[Device] = []
+        async for item in scan(
+            targets,
+            credentials=creds,
+            concurrency=concurrency,
+            timeout=timeout,
+            only_hits=only_hits,
+        ):
+            if nvr_only and not is_nvr_role(item.device_role):
+                continue
+            if exclude_nvr and is_nvr_role(item.device_role):
+                continue
+            devices.append(item)
+
+        rows = _aggregate_by_ip(devices)
+        if nvr_only:
+            rows = [r for r in rows if r.get("is_nvr")]
+        elif exclude_nvr:
+            rows = [r for r in rows if not r.get("is_nvr")]
+        return rows
+
+    try:
+        return await asyncio.wait_for(_inner(), timeout=wall)
+    except asyncio.TimeoutError as exc:
+        raise ValueError(
+            f"扫描超时（约 {int(wall)} 秒），请缩小目标范围、减少端口或降低单点超时后重试"
+        ) from exc
 
 
 def scan_segment(
@@ -147,7 +176,7 @@ def scan_segment(
     password: str | None = None,
     credentials: Sequence[dict[str, Any]] | None = None,
     concurrency: int = 200,
-    timeout: float = 5.0,
+    timeout: float = 3.0,
     only_hits: bool = True,
     nvr_only: bool = False,
     exclude_nvr: bool = False,

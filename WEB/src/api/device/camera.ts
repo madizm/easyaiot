@@ -1,4 +1,5 @@
 import {defHttp} from '@/utils/http/axios';
+import { computeSegmentScanHttpTimeoutMs } from '@/views/camera/utils/segmentScanTargetsValidate';
 
 const CAMERA_PREFIX = '/video/camera';
 
@@ -345,11 +346,12 @@ export interface SegmentScanDeviceRow {
 
 export const scanSegmentDevices = (data: SegmentScanParams) => {
   defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
+  const httpTimeoutMs = computeSegmentScanHttpTimeoutMs(data);
   return defHttp.post(
     {
       url: `${CAMERA_PREFIX}/scan/segment`,
       data,
-      timeout: 600 * 1000,
+      timeout: httpTimeoutMs,
     },
     { isTransformResponse: true },
   );
