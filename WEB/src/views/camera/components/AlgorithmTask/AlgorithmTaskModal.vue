@@ -92,6 +92,10 @@ const defaultModels = [
     label: 'yolov8n.pt',
     value: -2, // 使用 -2 表示 yolov8n.pt
   },
+  {
+    label: 'yolo26n.pt',
+    value: -3, // 使用 -3 表示 yolo26n.pt
+  },
 ];
 const modelOptions = ref<Array<{ label: string; value: number }>>([...defaultModels]);
 const modelMap = ref<Map<number, any>>(new Map()); // 存储完整的模型信息
@@ -315,6 +319,12 @@ const initDefaultModels = () => {
     id: -2,
     name: 'yolov8n.pt',
     model_path: 'yolov8n.pt',
+    version: undefined,
+  });
+  modelMap.value.set(-3, {
+    id: -3,
+    name: 'yolo26n.pt',
+    model_path: 'yolo26n.pt',
     version: undefined,
   });
 };

@@ -138,7 +138,7 @@ def upload_model_file():
 @model_bp.route('/upload', methods=['POST'])
 def upload_custom_model():
     """
-    上传用户自定义YOLO模型（支持yolov8和yolov11）
+    上传用户自定义YOLO模型（支持 yolov8、yolov11 和 yolov26）
     
     请求参数:
     - file: 模型文件（.pt或.onnx格式，multipart/form-data）
@@ -191,10 +191,10 @@ def upload_custom_model():
                         'msg': '无法确定ONNX模型版本，请确保上传的是有效的YOLO ONNX模型文件'
                     }), 400
                 
-                if yolo_version not in ['yolov8', 'yolov11']:
+                if yolo_version not in ['yolov8', 'yolov11', 'yolov26']:
                     return jsonify({
                         'code': 400,
-                        'msg': f'不支持的YOLO版本: {yolo_version}，仅支持yolov8和yolov11'
+                        'msg': f'不支持的YOLO版本: {yolo_version}，仅支持 yolov8、yolov11 和 yolov26'
                     }), 400
                 
                 logger.info(f"ONNX模型版本验证成功: {yolo_version} (检测方法: {detection_method})")
@@ -211,7 +211,7 @@ def upload_custom_model():
                     'msg': f'ONNX模型验证失败: {error_msg}'
                 }), 400
         else:
-            # 验证YOLO模型版本（必须是yolov8或yolov11）
+            # 验证YOLO模型版本（必须是 yolov8、yolov11 或 yolov26）
             try:
                 yolo_version, detection_method = validate_yolo_model(temp_path)
                 if yolo_version is None:
@@ -220,10 +220,10 @@ def upload_custom_model():
                         'msg': '无法确定模型版本，请确保上传的是有效的YOLO模型文件'
                     }), 400
                 
-                if yolo_version not in ['yolov8', 'yolov11']:
+                if yolo_version not in ['yolov8', 'yolov11', 'yolov26']:
                     return jsonify({
                         'code': 400,
-                        'msg': f'不支持的YOLO版本: {yolo_version}，仅支持yolov8和yolov11'
+                        'msg': f'不支持的YOLO版本: {yolo_version}，仅支持 yolov8、yolov11 和 yolov26'
                     }), 400
                 
                 logger.info(f"模型版本验证成功: {yolo_version} (检测方法: {detection_method})")

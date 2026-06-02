@@ -30,6 +30,7 @@ services:
       - ./yolo11n:/app/yolo11n
       - ./yolo11n.pt:/app/yolo11n.pt
       - ./yolov8n.pt:/app/yolov8n.pt
+      - ./yolo26n.pt:/app/yolo26n.pt
       # 环境变量配置文件（用于Docker部署，使用.env.docker）
       - ./.env.docker:/app/.env:ro
 

@@ -440,6 +440,7 @@ def create_algorithm_task(task_name: str,
             default_model_map = {
                 -1: 'yolo11n.pt',
                 -2: 'yolov8n.pt',
+                -3: 'yolo26n.pt',
             }
             try:
                 # 调用AI模块API获取模型信息（仅对正数ID，即数据库中的模型）
@@ -713,6 +714,7 @@ def update_algorithm_task(task_id: int, **kwargs) -> AlgorithmTask:
                 default_model_map = {
                     -1: 'yolo11n.pt',
                     -2: 'yolov8n.pt',
+                    -3: 'yolo26n.pt',
                 }
                 try:
                     # 调用AI模块API获取模型信息（仅对正数ID，即数据库中的模型）

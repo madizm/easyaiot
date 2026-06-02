@@ -17,6 +17,7 @@
                 <option value="">请选择模型</option>
                 <option value="yolov8">Yolov8模型</option>
                 <option value="yolov11">Yolov11模型</option>
+                <option value="yolov26">Yolov26模型</option>
                 <option v-for="model in state.models" :key="model.id" :value="model.id">
                   {{ model.name }} (v{{ model.version }})
                 </option>
@@ -708,6 +709,8 @@ const startDetection = async () => {
       formData.append('model_file_path', 'yolov8n.pt');
     } else if (state.selectedModelId === 'yolov11') {
       formData.append('model_file_path', 'yolo11n.pt');
+    } else if (state.selectedModelId === 'yolov26') {
+      formData.append('model_file_path', 'yolo26n.pt');
     }
     // 注意：用户上传的模型不需要传递 model_file_path，后端会根据 model_id 从 MinIO 下载
 
@@ -819,9 +822,9 @@ const startDetection = async () => {
     if (!useLLM && !useClusterService) {
       // 调用推理接口
       // 重要：用户上传的模型应该传递实际的 model_id（数字），而不是转换为 0
-      // 只有默认模型（yolov8/yolov11）才传递 0
+      // 只有默认模型（yolov8/yolov11/yolov26）才传递 0
       let modelId: number;
-      if (state.selectedModelId === 'yolov8' || state.selectedModelId === 'yolov11') {
+      if (state.selectedModelId === 'yolov8' || state.selectedModelId === 'yolov11' || state.selectedModelId === 'yolov26') {
         modelId = 0; // 默认模型使用 0
       } else if (typeof state.selectedModelId === 'number') {
         modelId = state.selectedModelId; // 用户上传的模型使用实际的 ID

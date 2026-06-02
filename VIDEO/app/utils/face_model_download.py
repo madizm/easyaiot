@@ -12,7 +12,8 @@ FACE_REC_DOWNLOAD_URL = os.getenv(
     'FACE_REC_MODEL_DOWNLOAD_URL',
     'https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip',
 )
-ONNX_IN_ZIP = 'buffalo_l/w600k_r50.onnx'
+# GitHub v0.7 发行包为根目录 w600k_r50.onnx；部分镜像/旧包为 buffalo_l/ 前缀
+ONNX_ZIP_CANDIDATES = ('w600k_r50.onnx', 'buffalo_l/w600k_r50.onnx')
 # 完整模型约 167MB，低于此阈值视为未下载或损坏
 MIN_MODEL_SIZE_BYTES = 10 * 1024 * 1024
 # buffalo_l.zip 约 280MB，用于 Content-Length 缺失时的进度估算
@@ -104,14 +105,30 @@ def _download_with_progress(url: str, dest_path: str) -> None:
                 _set_progress('downloading', progress, downloaded=downloaded, total=total)
 
 
+def _resolve_onnx_member(zf: zipfile.ZipFile) -> str:
+    names = set(zf.namelist())
+    for candidate in ONNX_ZIP_CANDIDATES:
+        if candidate in names:
+            return candidate
+    for name in zf.namelist():
+        if name.rstrip('/').endswith('w600k_r50.onnx'):
+            return name
+    onnx_entries = [n for n in zf.namelist() if n.lower().endswith('.onnx')]
+    raise KeyError(
+        'archive 中未找到 w600k_r50.onnx '
+        f'(已尝试 {ONNX_ZIP_CANDIDATES})，当前 onnx 条目: {onnx_entries}'
+    )
+
+
 def _extract_onnx(zip_path: str, target_path: str) -> None:
     with zipfile.ZipFile(zip_path) as zf:
-        info = zf.getinfo(ONNX_IN_ZIP)
+        member = _resolve_onnx_member(zf)
+        info = zf.getinfo(member)
         total = info.file_size or MIN_MODEL_SIZE_BYTES
         written = 0
         _set_progress('extracting', 86, downloaded=0, total=total)
 
-        with zf.open(ONNX_IN_ZIP) as src, open(target_path, 'wb') as dst:
+        with zf.open(member) as src, open(target_path, 'wb') as dst:
             while True:
                 chunk = src.read(1024 * 1024)
                 if not chunk:

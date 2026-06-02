@@ -312,7 +312,7 @@ const loadModelList = async () => {
       models = response.data;
     }
     
-    // 添加特殊模型（-1 和 -2）
+    // 添加特殊模型（-1、-2 和 -3）
     const specialModels = [
       {
         id: -1,
@@ -322,6 +322,11 @@ const loadModelList = async () => {
       {
         id: -2,
         name: 'yolov8n.pt',
+        version: undefined
+      },
+      {
+        id: -3,
+        name: 'yolo26n.pt',
         version: undefined
       }
     ];

@@ -1,6 +1,6 @@
 """
 ONNX模型验证工具
-验证ONNX模型是否为有效的YOLO模型（yolov8或yolov11）
+验证ONNX模型是否为有效的YOLO模型（yolov8、yolov11 或 yolov26）
 
 @author 翱翔的雄库鲁
 @email andywebjava@163.com
@@ -33,13 +33,13 @@ except ImportError:
 
 def validate_onnx_model(model_path: str) -> Tuple[Optional[str], str]:
     """
-    验证ONNX模型是否为有效的YOLO模型（yolov8或yolov11）
+    验证ONNX模型是否为有效的YOLO模型（yolov8、yolov11 或 yolov26）
     
     Args:
         model_path: ONNX模型文件路径
         
     Returns:
-        (版本字符串, 检测方法) - 如果版本为yolov8或yolov11，返回版本字符串；否则返回None
+        (版本字符串, 检测方法) - 如果版本为 yolov8、yolov11 或 yolov26，返回版本字符串；否则返回 None
         
     Raises:
         FileNotFoundError: 模型文件不存在
@@ -60,7 +60,9 @@ def validate_onnx_model(model_path: str) -> Tuple[Optional[str], str]:
         # 尝试通过模型信息判断版本
         try:
             model_info = str(model.info()).lower()
-            if 'yolo11' in model_info or 'yolo 11' in model_info:
+            if 'yolo26' in model_info or 'yolo 26' in model_info:
+                return 'yolov26', "ultralytics库（模型信息）"
+            elif 'yolo11' in model_info or 'yolo 11' in model_info:
                 return 'yolov11', "ultralytics库（模型信息）"
             elif 'yolo8' in model_info or 'yolo 8' in model_info or 'yolov8' in model_info:
                 return 'yolov8', "ultralytics库（模型信息）"
@@ -70,7 +72,9 @@ def validate_onnx_model(model_path: str) -> Tuple[Optional[str], str]:
         # 尝试通过模型类型判断
         try:
             model_type = str(type(model.model)).lower()
-            if 'yolo11' in model_type:
+            if 'yolo26' in model_type:
+                return 'yolov26', "ultralytics库（类型）"
+            elif 'yolo11' in model_type:
                 return 'yolov11', "ultralytics库（类型）"
             elif 'yolo8' in model_type or 'yolov8' in model_type:
                 return 'yolov8', "ultralytics库（类型）"
@@ -97,7 +101,9 @@ def validate_onnx_model(model_path: str) -> Tuple[Optional[str], str]:
                 onnx_model = onnx.load(model_path)
                 # 检查模型元数据
                 model_metadata = str(onnx_model).lower()
-                if 'yolo11' in model_metadata or 'yolo 11' in model_metadata:
+                if 'yolo26' in model_metadata or 'yolo 26' in model_metadata:
+                    return 'yolov26', "onnx库（元数据）"
+                elif 'yolo11' in model_metadata or 'yolo 11' in model_metadata:
                     return 'yolov11', "onnx库（元数据）"
                 elif 'yolo8' in model_metadata or 'yolo 8' in model_metadata or 'yolov8' in model_metadata:
                     return 'yolov8', "onnx库（元数据）"
@@ -106,7 +112,9 @@ def validate_onnx_model(model_path: str) -> Tuple[Optional[str], str]:
         
         # 检查文件名
         model_path_lower = model_path.lower()
-        if 'yolo11' in model_path_lower:
+        if 'yolo26' in model_path_lower:
+            return 'yolov26', "文件名"
+        elif 'yolo11' in model_path_lower:
             return 'yolov11', "文件名"
         elif 'yolo8' in model_path_lower or 'yolov8' in model_path_lower:
             return 'yolov8', "文件名"

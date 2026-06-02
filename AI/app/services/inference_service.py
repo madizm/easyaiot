@@ -128,7 +128,7 @@ class InferenceService:
            - 优先查找本地模型目录中的模型文件
            - 如果本地没有，从MinIO下载模型
         3. 如果 model_id 为 None 或 <= 0（使用默认模型）：
-           - AI目录下的默认模型文件（yolov8n.pt或yolo11n.pt）
+           - AI目录下的默认模型文件（yolo11n.pt、yolov8n.pt 或 yolo26n.pt）
            - 其他默认模型路径
         """
         # 1. 优先使用外部指定的模型文件路径
@@ -158,7 +158,7 @@ class InferenceService:
             )
 
         # 3. 使用默认模型（当 model_id 为 None 或 <= 0 时）
-        # 3.1 查找AI目录下的默认模型文件（yolov8n.pt或yolo11n.pt）
+        # 3.1 查找AI目录下的默认模型文件（yolo11n.pt、yolov8n.pt 或 yolo26n.pt）
         default_models = self._find_default_models()
         for model_path in default_models:
             if os.path.exists(model_path):
@@ -182,8 +182,8 @@ class InferenceService:
             self.specified_model_path = None
 
     def _find_default_models(self) -> list:
-        """查找AI目录下的默认模型文件（yolo11n.pt或yolov8n.pt）
-        优先级：yolo11n.pt > yolov8n.pt
+        """查找AI目录下的默认模型文件（yolo11n.pt、yolov8n.pt 或 yolo26n.pt）
+        优先级：yolo11n.pt > yolov8n.pt > yolo26n.pt
         """
         default_models = []
         try:
@@ -204,9 +204,9 @@ class InferenceService:
                         break
                     search_dir = os.path.dirname(search_dir)
             
-            # 查找模型文件，优先yolo11n.pt，其次yolov8n.pt
+            # 查找模型文件，优先yolo11n.pt，其次yolov8n.pt，再次yolo26n.pt
             for ai_dir in possible_ai_dirs:
-                for model_name in ['yolo11n.pt', 'yolov8n.pt']:
+                for model_name in ['yolo11n.pt', 'yolov8n.pt', 'yolo26n.pt']:
                     model_path = os.path.join(ai_dir, model_name)
                     abs_path = os.path.abspath(model_path)
                     if os.path.exists(model_path) and abs_path not in default_models:

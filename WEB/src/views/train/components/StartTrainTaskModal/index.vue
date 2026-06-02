@@ -204,6 +204,8 @@ const presetModels = [
   'yolov8x.pt',
   'yolo11n.pt',
   'yolo11s.pt',
+  'yolo26n.pt',
+  'yolo26s.pt',
 ];
 
 const {createMessage} = useMessage();

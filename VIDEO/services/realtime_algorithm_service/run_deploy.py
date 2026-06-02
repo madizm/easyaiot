@@ -927,6 +927,7 @@ def download_model_file(model_id: int, model_path: str) -> Optional[str]:
         default_model_map = {
             -1: 'yolo11n.pt',
             -2: 'yolov8n.pt',
+            -3: 'yolo26n.pt',
         }
 
         # 如果是负数ID，表示默认模型
@@ -1082,6 +1083,7 @@ def load_yolo_models(model_ids: List[int]) -> Dict[int, Any]:
                 default_model_map = {
                     -1: 'yolo11n.pt',
                     -2: 'yolov8n.pt',
+                    -3: 'yolo26n.pt',
                 }
 
                 # 如果是负数ID，表示默认模型
