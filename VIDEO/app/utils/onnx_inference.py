@@ -5,16 +5,16 @@ VIDEO 模块 ONNX 推理（支持按 GPU 设备 ID 选择 CUDA Execution Provide
 @email andywebjava@163.com
 @wechat EasyAIoT2025
 """
-import glob
 import json
 import logging
 import os
-import site
 from typing import Any, Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
 from PIL import Image
+
+import app.utils.nvidia_lib_path  # noqa: F401  补全 nvidia 库路径后再加载 ort
 
 try:
     import onnxruntime as ort
@@ -39,30 +39,6 @@ classes = {
     76: 'scissors', 77: 'teddy bear', 78: 'hair drier', 79: 'toothbrush',
 }
 color_palette = np.random.uniform(100, 255, size=(len(classes), 3))
-
-
-def _prepend_nvidia_lib_paths() -> None:
-    """将 pip 安装的 nvidia/* 库目录加入 LD_LIBRARY_PATH，供 ONNX Runtime CUDA EP 加载。"""
-    if os.environ.get('_ONNX_NVIDIA_LD_PATH_DONE') == '1':
-        return
-    try:
-        search_roots = list(site.getsitepackages())
-        user_site = site.getusersitepackages()
-        if user_site:
-            search_roots.append(user_site)
-        extra: List[str] = []
-        for root in search_roots:
-            if not root or not os.path.isdir(root):
-                continue
-            for lib_dir in glob.glob(os.path.join(root, 'nvidia', '*', 'lib')):
-                if os.path.isdir(lib_dir) and lib_dir not in extra:
-                    extra.append(lib_dir)
-        if extra:
-            current = os.environ.get('LD_LIBRARY_PATH', '')
-            os.environ['LD_LIBRARY_PATH'] = ':'.join(extra) + (':' + current if current else '')
-        os.environ['_ONNX_NVIDIA_LD_PATH_DONE'] = '1'
-    except Exception as e:
-        logging.debug('无法补全 NVIDIA 库路径: %s', e)
 
 
 def _cuda_provider_candidates(device_id: int) -> List[List]:
@@ -276,7 +252,6 @@ class ONNXInference:
         return use_gpu and self.device_id is not None
 
     def _init_model(self):
-        _prepend_nvidia_lib_paths()
         available_providers = ort.get_available_providers()
         logging.info("ONNX Runtime可用执行提供者: %s", available_providers)
 

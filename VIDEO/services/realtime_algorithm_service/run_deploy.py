@@ -36,6 +36,8 @@ import concurrent.futures
 video_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, video_root)
 
+import app.utils.nvidia_lib_path  # noqa: F401  须在 import onnxruntime 之前
+
 # 导入VIDEO模块的模型
 from models import db, AlgorithmTask, Device
 from app.utils.gb28181_source import resolve_gb28181_alternate_pull_url, resolve_gb28181_source

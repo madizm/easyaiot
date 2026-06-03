@@ -17,6 +17,8 @@ import signal
 from datetime import datetime
 from dotenv import load_dotenv
 
+import app.utils.nvidia_lib_path  # noqa: F401  子进程 run_deploy 继承 LD_LIBRARY_PATH
+
 # 不再需要导入数据库模型，所有信息都通过参数传入
 
 

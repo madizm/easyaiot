@@ -7,6 +7,9 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+
+import app.utils.nvidia_lib_path  # noqa: F401
+
 import onnxruntime as ort
 
 from app.utils.plate_recognition.double_plate_split_merge import get_split_merge

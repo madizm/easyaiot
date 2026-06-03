@@ -113,7 +113,7 @@ RUN set -ex && \
         temp_uploads \
         static/models && \
     # 设置执行权限
-    chmod +x run.py
+    chmod +x run.py docker-entrypoint.sh
 
 # 创建非root用户和权限设置
 RUN set -ex && \
@@ -132,5 +132,7 @@ EXPOSE 5000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
     CMD curl -fs http://localhost:5000/actuator/health > /dev/null || exit 1
 
+# 启动前动态补全 onnxruntime-gpu 所需的 nvidia 库路径
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
 # 启动命令
 CMD ["python", "run.py"]

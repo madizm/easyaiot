@@ -92,20 +92,8 @@ def load_env_file(env_name=''):
 args = parse_args()
 load_env_file(args.env)
 
-# 强制 ONNX Runtime 使用 CPU（在导入任何使用 ONNX Runtime 的模块之前设置）
-# 这样可以避免 CUDA 相关的错误，特别是在 CUDA 库不完整的情况下
-os.environ['ORT_EXECUTION_PROVIDERS'] = 'CPUExecutionProvider'
-print("✅ 已设置 ONNX Runtime 使用 CPU 执行提供者")
-
-# 如果未设置 CUDA_VISIBLE_DEVICES，临时隐藏 GPU 以避免 onnxruntime-gpu 在导入时加载 CUDA 库
-# 注意：这不会影响已经设置的 CUDA_VISIBLE_DEVICES（例如在 docker-compose.yaml 中设置的）
-# 如果需要在其他地方使用 GPU（如 PyTorch），可以在环境变量中明确设置 CUDA_VISIBLE_DEVICES
-if 'CUDA_VISIBLE_DEVICES' not in os.environ:
-    # 临时设置空值，避免 onnxruntime-gpu 在导入时尝试加载 CUDA 库
-    # 如果后续需要使用 GPU，可以在导入 onnxruntime 相关模块后重新设置
-    os.environ['CUDA_VISIBLE_DEVICES'] = ''
-    print("⚠️  临时隐藏 GPU 设备以避免 onnxruntime-gpu 导入时的 CUDA 库加载错误")
-    print("   如需使用 GPU，请在环境变量中设置 CUDA_VISIBLE_DEVICES（例如：CUDA_VISIBLE_DEVICES=0）")
+# 在导入 ONNX 相关模块前补全 pip 安装的 nvidia CUDA 库路径（非 Docker 直跑也生效）
+import app.utils.nvidia_lib_path  # noqa: F401
 
 
 def get_local_ip():

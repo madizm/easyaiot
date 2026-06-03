@@ -57,7 +57,8 @@ def load_env_file(env_name=''):
 args = parse_args()
 load_env_file(args.env)
 
-# 配置日志级别，减少第三方库的详细输出
+# 在导入 ONNX 相关模块前补全 pip 安装的 nvidia CUDA 库路径（非 Docker 直跑也生效）
+import app.utils.nvidia_lib_path  # noqa: F401
 logging.getLogger('nacos').setLevel(logging.WARNING)
 logging.getLogger('apscheduler').setLevel(logging.WARNING)
 logging.getLogger('werkzeug').setLevel(logging.WARNING)  # 禁用 Werkzeug 访问日志

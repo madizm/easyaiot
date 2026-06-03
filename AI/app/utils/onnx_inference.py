@@ -7,23 +7,13 @@ ONNX推理模块
 @wechat EasyAIoT2025
 """
 import os
-# 在导入onnxruntime之前设置环境变量，强制使用CPU执行提供者
-# 这样可以避免CUDA库加载错误（如cublasLtCreate符号未找到）
-# 注意：这些环境变量需要在导入onnxruntime之前设置
-if 'ORT_EXECUTION_PROVIDERS' not in os.environ:
-    os.environ['ORT_EXECUTION_PROVIDERS'] = 'CPUExecutionProvider'
+import logging
+from typing import Tuple, List, Dict, Any, Optional
 
-# 临时隐藏GPU设备，避免onnxruntime-gpu在导入时尝试加载CUDA库
-# 保存原始的CUDA_VISIBLE_DEVICES值，以便在导入后恢复（如果需要）
-_original_cuda_visible_devices = os.environ.get('CUDA_VISIBLE_DEVICES')
-if _original_cuda_visible_devices is None:
-    # 如果未设置，临时设置为空，避免CUDA库加载错误
-    os.environ['CUDA_VISIBLE_DEVICES'] = ''
+import app.utils.nvidia_lib_path  # noqa: F401
 
 import cv2
 import numpy as np
-import logging
-from typing import Tuple, List, Dict, Any, Optional
 from PIL import Image
 
 try:
