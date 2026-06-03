@@ -66,9 +66,142 @@ class Device(db.Model):
     auto_snap_enabled = db.Column(db.Boolean, default=False, nullable=False, comment='是否开启自动抓拍[默认不开启]')
     directory_id = db.Column(db.Integer, db.ForeignKey('device_directory.id', ondelete='SET NULL'), nullable=True, comment='所属目录ID')
     cover_image_path = db.Column(db.String(500), nullable=True, comment='摄像头封面展示图路径')
+    longitude = db.Column(db.Float, nullable=True, comment='WGS84 经度，用于地图展示')
+    latitude = db.Column(db.Float, nullable=True, comment='WGS84 纬度，用于地图展示')
+    altitude = db.Column(db.Float, nullable=True, comment='海拔高度(米)，可选')
+    address = db.Column(db.String(500), nullable=True, comment='安装地址或位置描述')
+    location_source = db.Column(db.String(20), nullable=True, comment='位置来源: manual/gb28181/import')
+    location_updated_at = db.Column(db.DateTime, nullable=True, comment='位置信息最后更新时间')
     images = db.relationship('Image', backref='project', lazy=True, cascade='all, delete-orphan')
     created_at = db.Column(db.DateTime, default=lambda: datetime.utcnow())
     updated_at = db.Column(db.DateTime, default=lambda: datetime.utcnow(), onupdate=lambda: datetime.utcnow())
+
+
+class DeviceTrackSession(db.Model):
+    """摄像头轨迹段：一次连续移动/巡逻/上报周期，供轨迹回放列表与分段展示。"""
+    __tablename__ = 'device_track_session'
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    device_id = db.Column(
+        db.String(100),
+        db.ForeignKey('device.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True,
+        comment='摄像头 device.id',
+    )
+    title = db.Column(db.String(200), nullable=True, comment='轨迹段名称，如 2024-06-03 巡逻')
+    started_at = db.Column(db.DateTime, nullable=False, comment='轨迹段起始时间（首点 recorded_at）')
+    ended_at = db.Column(db.DateTime, nullable=True, comment='轨迹段结束时间（末点 recorded_at）')
+    point_count = db.Column(db.Integer, nullable=False, default=0, comment='轨迹点数量（冗余，便于列表展示）')
+    distance_m = db.Column(db.Float, nullable=True, comment='轨迹总里程(米)，可选缓存')
+    source = db.Column(
+        db.String(20),
+        nullable=False,
+        default='gb28181',
+        comment='来源: gb28181/gps/import/system',
+    )
+    external_key = db.Column(
+        db.String(200),
+        nullable=True,
+        unique=True,
+        comment='外部同步幂等键，如 gb28181:{sip}:{channel}:{date}',
+    )
+    created_at = db.Column(db.DateTime, default=lambda: datetime.utcnow())
+    updated_at = db.Column(
+        db.DateTime,
+        default=lambda: datetime.utcnow(),
+        onupdate=lambda: datetime.utcnow(),
+    )
+
+    points = db.relationship(
+        'DeviceTrackPoint',
+        backref='session',
+        lazy='dynamic',
+        cascade='all, delete-orphan',
+    )
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'device_id': self.device_id,
+            'title': self.title,
+            'started_at': self.started_at.isoformat() if self.started_at else None,
+            'ended_at': self.ended_at.isoformat() if self.ended_at else None,
+            'point_count': self.point_count,
+            'distance_m': self.distance_m,
+            'source': self.source,
+            'external_key': self.external_key,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class DeviceTrackPoint(db.Model):
+    """摄像头轨迹点：时序 GPS/位置采样，供地图轨迹回放。"""
+    __tablename__ = 'device_track_point'
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    device_id = db.Column(
+        db.String(100),
+        db.ForeignKey('device.id', ondelete='CASCADE'),
+        nullable=False,
+        comment='摄像头 device.id',
+    )
+    session_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey('device_track_session.id', ondelete='SET NULL'),
+        nullable=True,
+        index=True,
+        comment='所属轨迹段，可为空（散点）',
+    )
+    recorded_at = db.Column(db.DateTime, nullable=False, comment='GPS/位置上报时间')
+    longitude = db.Column(db.Float, nullable=False, comment='WGS84 经度')
+    latitude = db.Column(db.Float, nullable=False, comment='WGS84 纬度')
+    altitude = db.Column(db.Float, nullable=True, comment='海拔(米)')
+    speed = db.Column(db.Float, nullable=True, comment='速度(km/h)')
+    direction = db.Column(db.Float, nullable=True, comment='方向角(0-360度，正北为0)')
+    accuracy_m = db.Column(db.Float, nullable=True, comment='定位精度(米)')
+    source = db.Column(
+        db.String(20),
+        nullable=False,
+        default='gb28181',
+        comment='来源: gb28181/gps/import/alert/manual',
+    )
+    report_source = db.Column(
+        db.String(50),
+        nullable=True,
+        comment='上报类型，如 Mobile Position / GPS Alarm',
+    )
+    external_key = db.Column(
+        db.String(200),
+        nullable=True,
+        unique=True,
+        comment='外部同步幂等键，防重复写入',
+    )
+    created_at = db.Column(db.DateTime, default=lambda: datetime.utcnow())
+
+    __table_args__ = (
+        db.Index('ix_device_track_point_device_recorded', 'device_id', 'recorded_at'),
+        db.Index('ix_device_track_point_session_recorded', 'session_id', 'recorded_at'),
+    )
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'device_id': self.device_id,
+            'session_id': self.session_id,
+            'recorded_at': self.recorded_at.isoformat() if self.recorded_at else None,
+            'longitude': self.longitude,
+            'latitude': self.latitude,
+            'altitude': self.altitude,
+            'speed': self.speed,
+            'direction': self.direction,
+            'accuracy_m': self.accuracy_m,
+            'source': self.source,
+            'report_source': self.report_source,
+            'external_key': self.external_key,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+        }
 
 class Image(db.Model):
     id = db.Column(db.Integer, primary_key=True)

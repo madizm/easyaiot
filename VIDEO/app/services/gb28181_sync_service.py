@@ -3,6 +3,7 @@
 """
 import logging
 import os
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
@@ -139,7 +140,68 @@ def _virtual_device_id(sip_device_id: str, channel_id: str) -> str:
     return f'gb28181_{sip_device_id}_{channel_id}'
 
 
-def _upsert_gb_device(sip_device_id: str, channel_id: str, name: str, default_dir_id: int) -> bool:
+def _extract_channel_location(item: dict) -> dict:
+    """从 WVP 通道数据提取位置信息（国标 Catalog 字段）。"""
+    lng = item.get('longitude') or item.get('gbLongitude')
+    lat = item.get('latitude') or item.get('gbLatitude')
+    address = item.get('address') or item.get('gbAddress')
+
+    parsed_lng = parsed_lat = None
+    if lng not in (None, ''):
+        try:
+            parsed_lng = float(lng)
+        except (TypeError, ValueError):
+            parsed_lng = None
+    if lat not in (None, ''):
+        try:
+            parsed_lat = float(lat)
+        except (TypeError, ValueError):
+            parsed_lat = None
+
+    addr = str(address).strip() if address not in (None, '') else None
+    if parsed_lng is None and parsed_lat is None and not addr:
+        return {}
+    return {
+        'longitude': parsed_lng,
+        'latitude': parsed_lat,
+        'address': addr,
+        'location_source': 'gb28181',
+    }
+
+
+def _apply_gb_location(device, location: dict) -> bool:
+    """写入国标位置；不覆盖用户手动维护的位置。"""
+    if not location:
+        return False
+    if device.location_source == 'manual':
+        return False
+
+    changed = False
+    lng = location.get('longitude')
+    lat = location.get('latitude')
+    if lng is not None and lat is not None:
+        if device.longitude != lng or device.latitude != lat:
+            device.longitude = lng
+            device.latitude = lat
+            changed = True
+    addr = location.get('address')
+    if addr and device.address != addr:
+        device.address = addr
+        changed = True
+    if changed:
+        device.location_source = 'gb28181'
+        device.location_updated_at = datetime.utcnow()
+    return changed
+
+
+def _upsert_gb_device(
+    sip_device_id: str,
+    channel_id: str,
+    name: str,
+    default_dir_id: int,
+    *,
+    location: dict | None = None,
+) -> bool:
     mapped_id = _virtual_device_id(sip_device_id, channel_id)
     source = f'{GB28181_SOURCE_PREFIX}{sip_device_id}/{channel_id}'
     # 国标通道播放走 WVP 点播，live 流地址留空；算法任务需 ai_rtmp_stream 推送检测结果
@@ -167,10 +229,13 @@ def _upsert_gb_device(sip_device_id: str, channel_id: str, name: str, default_di
         if not (device.ai_http_stream or '').strip():
             device.ai_http_stream = ai_http_stream
             changed = True
+        if _apply_gb_location(device, location or {}):
+            changed = True
         if changed:
             db.session.commit()
         return False
 
+    loc = location or {}
     device = Device(
         id=mapped_id,
         name=name or mapped_id,
@@ -185,6 +250,11 @@ def _upsert_gb_device(sip_device_id: str, channel_id: str, name: str, default_di
         hardware_id=channel_id,
         nvr_channel=0,
         directory_id=default_dir_id,
+        longitude=loc.get('longitude'),
+        latitude=loc.get('latitude'),
+        address=loc.get('address'),
+        location_source='gb28181' if loc.get('longitude') is not None and loc.get('latitude') is not None else None,
+        location_updated_at=datetime.utcnow() if loc.get('longitude') is not None and loc.get('latitude') is not None else None,
     )
     db.session.add(device)
     db.session.commit()
@@ -285,7 +355,10 @@ def sync_gb28181_channels_from_payload(
         sip_ids.add(sip)
         channels_seen += 1
         try:
-            if _upsert_gb_device(sip, ch_id, name, default_dir.id):
+            if _upsert_gb_device(
+                sip, ch_id, name, default_dir.id,
+                location=_extract_channel_location(item),
+            ):
                 created += 1
         except Exception as e:
             db.session.rollback()
@@ -404,7 +477,10 @@ def sync_gb28181_channels_to_devices(*, strict: bool = False) -> Dict[str, Any]:
             channels_seen += 1
             parent_id, channel_id, ch_name = normalized
             try:
-                if _upsert_gb_device(parent_id, channel_id, ch_name, default_dir.id):
+                if _upsert_gb_device(
+                    parent_id, channel_id, ch_name, default_dir.id,
+                    location=_extract_channel_location(ch),
+                ):
                     created += 1
             except Exception as e:
                 db.session.rollback()

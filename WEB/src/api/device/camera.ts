@@ -121,6 +121,10 @@ export const registerDevice = (data: {
   nvr_port?: number;
   nvr_name?: string;
   nvr_vendor?: string;
+  longitude?: number | null;
+  latitude?: number | null;
+  altitude?: number | null;
+  address?: string | null;
 }) => {
   return commonApi('post', `${CAMERA_PREFIX}/register/device`, data);
 };
@@ -215,8 +219,40 @@ export const updateDevice = (device_id: string, data: {
   nvr_port?: number;
   nvr_name?: string;
   nvr_vendor?: string;
+  longitude?: number | null;
+  latitude?: number | null;
+  altitude?: number | null;
+  address?: string | null;
+  location_source?: string | null;
 }) => {
   return commonApi('put', `${CAMERA_PREFIX}/device/${device_id}`, data);
+};
+
+export interface DeviceLocationInfo {
+  id: string;
+  name: string;
+  source: string;
+  directory_id?: number | null;
+  online?: boolean;
+  longitude?: number | null;
+  latitude?: number | null;
+  altitude?: number | null;
+  address?: string | null;
+  location_source?: string | null;
+  location_updated_at?: string | null;
+  has_location?: boolean;
+  device_kind?: string;
+}
+
+/** 查询摄像头位置列表（地图/轨迹等场景） */
+export const getDeviceLocations = (params?: {
+  directory_id?: number;
+  has_location?: boolean;
+}) => {
+  return commonApi('get', `${CAMERA_PREFIX}/locations`, {
+    ...(params?.directory_id != null ? { directory_id: params.directory_id } : {}),
+    ...(params?.has_location === false ? { has_location: 'false' } : {}),
+  });
 };
 
 export const deleteDevice = (device_id: string) => {
@@ -473,6 +509,13 @@ export interface DeviceInfo {
   channel_online?: boolean | null;
   connection_status?: string | null;
   channel_count?: number;
+  longitude?: number | null;
+  latitude?: number | null;
+  altitude?: number | null;
+  address?: string | null;
+  location_source?: string | null;
+  location_updated_at?: string | null;
+  has_location?: boolean;
   created_at: string;
   updated_at: string;
 }

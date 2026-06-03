@@ -177,7 +177,12 @@ def create_app():
     db.init_app(app)
     with app.app_context():
         try:
-            from models import Device, Image, DeviceDirectory, Nvr, SnapSpace, SnapTask, DetectionRegion, AlgorithmModelService, RegionModelService, DeviceStorageConfig, Playback, RecordSpace, AlgorithmTask, FrameExtractor, Sorter, Pusher, DeviceDetectionRegion
+            from models import (
+                Device, Image, DeviceDirectory, Nvr, SnapSpace, SnapTask, DetectionRegion,
+                AlgorithmModelService, RegionModelService, DeviceStorageConfig, Playback,
+                RecordSpace, AlgorithmTask, FrameExtractor, Sorter, Pusher, DeviceDetectionRegion,
+                DeviceTrackSession, DeviceTrackPoint,
+            )
             db.create_all()
             
             # 迁移：检查并添加缺失的列和表
@@ -292,6 +297,12 @@ def create_app():
                     ('rtsp_direct', 'TEXT'),
                     ('channel_online', 'BOOLEAN'),
                     ('connection_status', 'VARCHAR(100)'),
+                    ('longitude', 'DOUBLE PRECISION'),
+                    ('latitude', 'DOUBLE PRECISION'),
+                    ('altitude', 'DOUBLE PRECISION'),
+                    ('address', 'VARCHAR(500)'),
+                    ('location_source', 'VARCHAR(20)'),
+                    ('location_updated_at', 'TIMESTAMP WITHOUT TIME ZONE'),
                 ):
                     r = db.session.execute(text("""
                         SELECT EXISTS (
@@ -341,7 +352,21 @@ def create_app():
                         """))
                         db.session.commit()
                         print("✅ device_detection_region.model_ids 列添加成功")
-                
+
+                # 轨迹回放表：device_track_session / device_track_point
+                for track_table in ('device_track_session', 'device_track_point'):
+                    r = db.session.execute(text("""
+                        SELECT EXISTS (
+                            SELECT FROM information_schema.tables
+                            WHERE table_schema = 'public'
+                            AND table_name = :tbl
+                        );
+                    """), {'tbl': track_table})
+                    if not r.scalar():
+                        print(f"⚠️  {track_table} 表不存在，正在创建...")
+                        db.create_all()
+                        print(f"✅ {track_table} 表创建成功")
+
                 if directory_id_exists and auto_snap_enabled_exists and cover_image_path_exists and device_detection_region_exists:
                     print("✅ 数据库迁移检查完成，所有列和表已存在")
 

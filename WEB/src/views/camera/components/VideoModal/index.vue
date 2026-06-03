@@ -225,6 +225,17 @@
                 v-model:nvr="modelRef.nvr"
               />
             </Col>
+            <Col :span="24" v-if="state.isEdit || state.isView">
+              <DeviceLocationFields
+                v-model:longitude="modelRef.longitude"
+                v-model:latitude="modelRef.latitude"
+                v-model:altitude="modelRef.altitude"
+                v-model:address="modelRef.address"
+                :location-source="modelRef.location_source"
+                :location-updated-at="modelRef.location_updated_at"
+                :disabled="state.isView"
+              />
+            </Col>
           </Row>
         </Form>
       </Spin>
@@ -238,6 +249,7 @@ import {BasicModal, useModal, useModalInner} from '@/components/Modal';
 import {BasicTable, useTable} from '@/components/Table';
 import VideoRegisterModal from '../VideoRegisterModal/index.vue';
 import NvrMountFields from '../NvrMountFields/index.vue';
+import DeviceLocationFields from '../DeviceLocationFields/index.vue';
 import {Col, Form, FormItem, Input, Row, Select, Spin,} from 'ant-design-vue';
 import {CopyOutlined} from '@ant-design/icons-vue';
 import {useMessage} from '@/hooks/web/useMessage';
@@ -306,6 +318,12 @@ const modelRef = reactive({
   nvr_channel: 0,
   nvr: null as Record<string, unknown> | null,
   nvr_label: '',
+  longitude: null as number | null,
+  latitude: null as number | null,
+  altitude: null as number | null,
+  address: '',
+  location_source: null as string | null,
+  location_updated_at: null as string | null,
 });
 
 
@@ -331,6 +349,13 @@ function stripNvrMountFromPayload(data: Record<string, unknown>) {
   delete data.nvr;
   delete data.nvr_id;
   delete data.nvr_channel;
+  delete data.nvr_label;
+}
+
+function stripReadOnlyFromPayload(data: Record<string, unknown>) {
+  delete data.location_source;
+  delete data.location_updated_at;
+  delete data.has_location;
   delete data.nvr_label;
 }
 
@@ -824,6 +849,7 @@ function handleOk() {
         if (isNvrChannel.value) {
           stripNvrMountFromPayload(updateData);
         }
+        stripReadOnlyFromPayload(updateData);
         await updateDevice(modelRef.id, updateData);
       } else if (state.type === 'camera') {
         // 摄像头处理
@@ -840,6 +866,7 @@ function handleOk() {
           if (isNvrChannel.value) {
             stripNvrMountFromPayload(updateData);
           }
+          stripReadOnlyFromPayload(updateData);
           await updateDevice(modelRef.id, updateData);
         } else {
           const response = await registerDevice(modelRef);
@@ -884,6 +911,7 @@ function handleOk() {
           if (isNvrChannel.value) {
             stripNvrMountFromPayload(updateData);
           }
+          stripReadOnlyFromPayload(updateData);
           await updateDevice(modelRef.id, updateData);
           
           // 检查并确保推流转发任务存在

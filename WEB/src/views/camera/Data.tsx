@@ -1,6 +1,7 @@
 // 修改后的Data.tsx文件
 import {BasicColumn, FormProps} from "@/components/Table";
 import {Tag} from "ant-design-vue";
+import { formatLocationSummary, hasDeviceLocation } from './utils/deviceLocation';
 
 export function getBasicColumns(): BasicColumn[] {
   return [
@@ -61,6 +62,18 @@ export function getBasicColumns(): BasicColumn[] {
       title: 'IP地址',
       dataIndex: 'ip',
       width: 120,
+    },
+    {
+      title: '位置',
+      dataIndex: 'has_location',
+      width: 140,
+      defaultHidden: true,
+      customRender: ({ record }) => {
+        if (hasDeviceLocation(record)) {
+          return formatLocationSummary(record);
+        }
+        return '未设置';
+      },
     },
     {
       title: '所属NVR',

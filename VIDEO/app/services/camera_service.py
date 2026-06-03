@@ -10,6 +10,7 @@ import re
 import socket
 import time
 import tzlocal
+from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 from flask import current_app
 from onvif import ONVIFCamera
@@ -28,6 +29,92 @@ from app.utils.ip_utils import IpReachabilityMonitor, resolve_ipv4_for_stream_ur
 from models import Device, db, DeviceDetectionRegion, DeviceDirectory
 
 DEFAULT_DIRECTORY_NAME = '默认分组'
+
+_LOCATION_FIELD_KEYS = frozenset({
+    'longitude', 'latitude', 'altitude', 'address', 'location_source',
+})
+
+
+def _parse_optional_float(value):
+    """解析可选浮点；空字符串/None 表示清除。"""
+    if value is None or value == '':
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError) as e:
+        raise ValueError(f'坐标数值无效: {value}') from e
+
+
+def _validate_location_pair(longitude, latitude):
+    """经纬度需成对出现；有值时校验 WGS84 范围。"""
+    if longitude is None and latitude is None:
+        return
+    if longitude is None or latitude is None:
+        raise ValueError('经纬度需同时填写或同时留空')
+    if not (-180.0 <= longitude <= 180.0):
+        raise ValueError('经度范围应在 -180 至 180 之间')
+    if not (-90.0 <= latitude <= 90.0):
+        raise ValueError('纬度范围应在 -90 至 90 之间')
+
+
+def _location_fields_for_device(camera: Device) -> dict:
+    has_location = camera.longitude is not None and camera.latitude is not None
+    updated_at = camera.location_updated_at
+    return {
+        'longitude': camera.longitude,
+        'latitude': camera.latitude,
+        'altitude': camera.altitude,
+        'address': camera.address,
+        'location_source': camera.location_source,
+        'location_updated_at': updated_at.isoformat() if updated_at else None,
+        'has_location': has_location,
+    }
+
+
+def _apply_location_updates(camera: Device, update_info: dict) -> None:
+    """处理位置字段更新；允许显式传 null/空字符串清除。"""
+    if not any(k in update_info for k in _LOCATION_FIELD_KEYS):
+        return
+
+    longitude = camera.longitude
+    latitude = camera.latitude
+    altitude = camera.altitude
+    address = camera.address
+
+    if 'longitude' in update_info:
+        longitude = _parse_optional_float(update_info['longitude'])
+    if 'latitude' in update_info:
+        latitude = _parse_optional_float(update_info['latitude'])
+    if 'altitude' in update_info:
+        altitude = _parse_optional_float(update_info['altitude'])
+    if 'address' in update_info:
+        raw_addr = update_info['address']
+        if raw_addr is None or raw_addr == '':
+            address = None
+        else:
+            address = str(raw_addr).strip() or None
+
+    _validate_location_pair(longitude, latitude)
+    if altitude is not None and not (-500.0 <= altitude <= 9000.0):
+        raise ValueError('海拔高度应在 -500 至 9000 米之间')
+
+    camera.longitude = longitude
+    camera.latitude = latitude
+    camera.altitude = altitude
+    camera.address = address
+
+    has_coords = longitude is not None and latitude is not None
+    has_any = has_coords or altitude is not None or bool(address)
+    if has_any:
+        src = update_info.get('location_source')
+        if src:
+            camera.location_source = str(src).strip()[:20] or 'manual'
+        elif not camera.location_source or camera.location_source == 'gb28181':
+            camera.location_source = 'manual'
+        camera.location_updated_at = datetime.utcnow()
+    else:
+        camera.location_source = None
+        camera.location_updated_at = None
 
 # 全局变量定义
 _onvif_cameras = {}
@@ -284,6 +371,7 @@ def _to_dict(camera: Device) -> dict:
         'channel_online': camera.channel_online,
         'connection_status': camera.connection_status,
         'online': online_status,
+        **_location_fields_for_device(camera),
         **nvr_fields_for_device(camera),
     }
     # nvr_fields_for_device 对无 NVR 的设备默认 device_kind=direct，需保留国标通道类型
@@ -1120,6 +1208,9 @@ def update_camera(id: str, update_info: dict):
     # 确保设备有对应的抓拍空间和录像空间
     ensure_device_spaces(id)
 
+    _apply_location_updates(camera, update_info)
+    update_info = {k: v for k, v in update_info.items() if k not in _LOCATION_FIELD_KEYS}
+
     # 保存旧的设备名称，用于后续同步更新空间名称
     old_device_name = camera.name
     device_name_changed = False
@@ -1410,3 +1501,29 @@ def get_snapshot_uri(ip: str, port: int, username: str, password: str) -> str:
     except Exception as e:
         logger.error(f"获取设备 {ip} 快照URI失败: {str(e)}")
         raise RuntimeError(f"ONVIF快照URI获取失败: {str(e)}")
+
+
+def list_devices_for_map(*, directory_id=None, has_location_only=True) -> list:
+    """返回用于地图展示的摄像头位置列表（轻量字段）。"""
+    query = Device.query
+    if directory_id is not None:
+        query = query.filter(Device.directory_id == directory_id)
+    if has_location_only:
+        query = query.filter(
+            Device.longitude.isnot(None),
+            Device.latitude.isnot(None),
+        )
+    devices = query.order_by(Device.updated_at.desc()).all()
+    result = []
+    for device in devices:
+        loc = _location_fields_for_device(device)
+        result.append({
+            'id': device.id,
+            'name': device.name,
+            'source': device.source,
+            'directory_id': device.directory_id,
+            'online': _to_dict(device).get('online'),
+            **loc,
+            **nvr_fields_for_device(device),
+        })
+    return result

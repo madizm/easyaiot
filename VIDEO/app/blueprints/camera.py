@@ -598,6 +598,25 @@ def list_devices():
         return jsonify({'code': 500, 'msg': '服务器内部错误'}), 500
 
 
+@camera_bp.route('/locations', methods=['GET'])
+def list_device_locations():
+    """查询摄像头位置信息（供地图/轨迹等场景，不影响现有列表接口）。"""
+    try:
+        directory_id = request.args.get('directory_id')
+        has_location = request.args.get('has_location', 'true').strip().lower()
+        dir_id = int(directory_id) if directory_id not in (None, '') else None
+        items = list_devices_for_map(
+            directory_id=dir_id,
+            has_location_only=has_location not in ('false', '0', 'no'),
+        )
+        return jsonify({'code': 0, 'msg': 'success', 'data': items, 'total': len(items)})
+    except ValueError:
+        return jsonify({'code': 400, 'msg': '参数 directory_id 需为整数'}), 400
+    except Exception as e:
+        logger.error(f'摄像头位置列表查询失败: {str(e)}')
+        return jsonify({'code': 500, 'msg': '服务器内部错误'}), 500
+
+
 @camera_bp.route('/device/<string:device_id>', methods=['GET'])
 def get_device_info(device_id):
     """获取单个设备详情"""
