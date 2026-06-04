@@ -315,15 +315,20 @@ else:
     print("OK")
 PYEOF
         set +e
-        DOCKER_CONFIG_FILE="$docker_config_file" DOCKER_MIRROR="$DOCKER_MIRROR" \
-            python3 "$py_file"
+        local py_out
+        py_out=$(DOCKER_CONFIG_FILE="$docker_config_file" DOCKER_MIRROR="$DOCKER_MIRROR" \
+            python3 "$py_file" 2>&1)
         local py_rc=$?
         set -e
         rm -f "$py_file"
 
         if [ "$py_rc" -eq 0 ]; then
             config_updated=true
-            print_info "已向已有 daemon.json 合并镜像源"
+            if [ "$py_out" = "UPDATED" ]; then
+                print_info "已向已有 daemon.json 合并镜像源"
+            else
+                print_info "daemon.json 镜像源检查完成"
+            fi
         else
             print_warning "无法自动合并已有 daemon.json（格式可能无效）"
             print_info "请手动在 registry-mirrors 中添加: ${DOCKER_MIRROR}"
@@ -357,22 +362,41 @@ PYEOF
         print_success "Docker 服务已重启"
     fi
 
+    show_docker_registry_mirrors
+
     return 0
+}
+
+# 显示 daemon.json 中的 registry-mirrors 是否已生效
+show_docker_registry_mirrors() {
+    local mirror_lines
+    mirror_lines=$(docker info 2>/dev/null | grep -iE 'Registry Mirrors|registry-mirrors' -A 6 || true)
+    if [ -n "$mirror_lines" ]; then
+        print_info "当前 Docker registry-mirrors:"
+        echo "$mirror_lines" | sed 's/^/  /'
+    else
+        print_warning "docker info 未显示 Registry Mirrors（CentOS7 旧版 Docker 可能不支持或需重启）"
+        print_info "本脚本将优先从 docker.1ms.run 直连拉取，不依赖 registry-mirror"
+    fi
 }
 
 # 从国内镜像站拉取并 tag 为 postgres:18
 _pull_from_registry() {
     local source_image="$1"
-    print_info "尝试拉取: ${source_image}"
-    if docker pull "$source_image"; then
+    print_info "从国内镜像站直连拉取: ${source_image}"
+    set +e
+    docker pull "$source_image"
+    local pull_rc=$?
+    set -e
+    if [ "$pull_rc" -eq 0 ]; then
         docker tag "$source_image" "$PG_IMAGE" 2>/dev/null || true
-        print_success "已拉取并标记为 ${PG_IMAGE}"
+        print_success "已拉取 ${source_image} 并标记为 ${PG_IMAGE}"
         return 0
     fi
     return 1
 }
 
-# 确保 postgres:18 镜像存在（优先国内源）
+# 确保 postgres:18 镜像存在（CentOS7 优先国内直连，避免走 docker.io）
 ensure_postgresql_image() {
     if [ "$SKIP_PULL" = true ]; then
         print_info "已跳过镜像拉取 (--skip-pull)"
@@ -390,8 +414,11 @@ ensure_postgresql_image() {
         return 0
     fi
 
+    print_info "CentOS7 旧版 Docker 拉取 postgres:18 时界面仍可能显示 docker.io，"
+    print_info "这不代表未走镜像加速；本脚本优先从国内镜像站域名直连拉取。"
+
+    # 国内直连优先（显式域名，日志中应出现 docker.1ms.run 而非仅 docker.io）
     local mirrors=(
-        "${PG_IMAGE}"
         "docker.1ms.run/library/postgres:18"
         "docker.1ms.run/postgres:18"
         "registry.cn-hangzhou.aliyuncs.com/library/postgres:18"
@@ -399,20 +426,22 @@ ensure_postgresql_image() {
 
     local pulled=false
     for img in "${mirrors[@]}"; do
-        if [ "$img" = "$PG_IMAGE" ]; then
-            print_info "通过已配置的 registry-mirror 拉取 ${PG_IMAGE} ..."
-            if docker pull "$PG_IMAGE"; then
-                pulled=true
-                break
-            fi
-            print_warning "registry-mirror 拉取失败，尝试国内镜像站直连..."
-        else
-            if _pull_from_registry "$img"; then
-                pulled=true
-                break
-            fi
+        if _pull_from_registry "$img"; then
+            pulled=true
+            break
         fi
     done
+
+    # 最后才尝试 docker.io（部分环境 registry-mirror 仅对此生效）
+    if [ "$pulled" != true ]; then
+        print_warning "国内镜像站直连均失败，最后尝试 docker pull ${PG_IMAGE} ..."
+        print_info "（若仍显示 docker.io/library/postgres，说明正在走 Docker Hub 或 registry-mirror 代理）"
+        set +e
+        if docker pull "$PG_IMAGE"; then
+            pulled=true
+        fi
+        set -e
+    fi
 
     if [ "$pulled" = true ] && docker image inspect "$PG_IMAGE" >/dev/null 2>&1; then
         print_success "PostgreSQL 镜像就绪: ${PG_IMAGE}"
