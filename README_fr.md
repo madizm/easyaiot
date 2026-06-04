@@ -735,11 +735,29 @@ Voici les contributeurs exceptionnels qui ont apporté une contribution signific
 <td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50; width: 32%; min-width: 9rem;"><nobr>遗忘的星空</nobr></td>
 <td style="padding: 15px; border: 1px solid #e0e0e0; color: #444; line-height: 1.8;">A contribué au développement de l'intégration directe des appareils EasyAIoT en fournissant un inventaire multi-marques des caméras IP et un scanner de sous-réseaux, avec découverte en masse des IPC et NVR Hikvision ; amélioration de la recherche en masse et de l'enregistrement en un clic pour les appareils connectés directement, sur le même sous-réseau ou entre sous-réseaux. L'accès s'effectue via les protocoles natifs des appareils, contournant le SDK Hikvision et réduisant la dépendance à la plateforme Hikvision — posant les bases d'une intégration ouverte et maîtrisée des caméras à grande échelle.</td>
 </tr>
+<tr style="background-color: #f8f9fa;">
+<td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50; width: 32%; min-width: 9rem;">
+<div style="display: flex; align-items: center; gap: 12px;">
+<img src=".image/sponsor/阿龙.jpg" alt="阿龙" style="width: 48px; height: 48px; border-radius: 50%; object-fit: cover; flex-shrink: 0; box-shadow: 0 2px 6px rgba(0,0,0,0.12);">
+<nobr>阿龙</nobr>
+</div>
+</td>
+<td style="padding: 15px; border: 1px solid #e0e0e0; color: #444; line-height: 1.8;">Pour faire progresser EasyAIoT dans la visualisation cartographique et l'analyse spatiale, a contribué de manière indépendante à l'implémentation complète des capacités de visualisation spatiale Tianditu, couvrant l'intégration de la carte de base Tianditu nationale, le positionnement des caméras et des dispositifs d'alarme, les vues de répartition cartographique, la recherche de lieux et l'importation par lot de coordonnées, la cartographie automatique des événements d'alarme, la recherche de trajectoires par personne/véhicule et la relecture des trajectoires des appareils mobiles — faisant passer la capacité « visualisation spatiale Tianditu et analyse par carte » de la conception à une forme exploitable en production.</td>
+</tr>
+<tr>
+<td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50; width: 32%; min-width: 9rem;">
+<div style="display: flex; align-items: center; gap: 12px;">
+<img src=".image/sponsor/雨落流殇.jpg" alt="雨落流殇" style="width: 48px; height: 48px; border-radius: 50%; object-fit: cover; flex-shrink: 0; box-shadow: 0 2px 6px rgba(0,0,0,0.12);">
+<nobr>雨落流殇</nobr>
+</div>
+</td>
+<td style="padding: 15px; border: 1px solid #e0e0e0; color: #444; line-height: 1.8;">Pour faire progresser EasyAIoT dans la diffusion multimédia à très grande échelle, a contribué à l'architecture de déploiement et à l'approche d'ordonnancement des clusters de serveurs multimédia hétérogènes SRS et ZLMediaKit, proposant des solutions évolutives incluant la coordination multi-pools de nœuds, le découplage du plan de contrôle multimédia et de la couche métier, les pipelines de stockage et de téléchargement, ainsi que l'enregistrement et l'ordonnancement des nœuds — posant des bases architecturales importantes pour permettre à la plateforme de prendre en charge l'accès concurrent à des dizaines de milliers de flux caméra avec une diffusion stable et une montée en charge élastique.</td>
+</tr>
 </tbody>
 </table>
 
 <p style="font-size: 14px; line-height: 1.8; color: #2c3e50; font-weight: 500; margin: 20px 0; padding: 15px; background-color: #e8f4f8; border-left: 4px solid #3498db; border-radius: 4px;">
-<strong>Remerciements spéciaux</strong> : Le travail des contributeurs ci-dessus a fait avancer EasyAIoT sur plusieurs fronts, notamment la documentation et les scripts de déploiement multiplateforme, la mise en œuvre des capacités vidéo selon la norme nationale (dont GB28181), les tests d'intégration IA, la découverte directe multi-marques et l'intégration en masse des caméras, ainsi que l'intégration de bout en bout EasyAIoT-Edge reliant l'accès caméra et l'IA sur l'edge. Leur professionnalisme et leur dévouement méritent notre reconnaissance et notre respect. Encore une fois, nous exprimons notre gratitude la plus sincère à ces contributeurs exceptionnels ! 🙏
+<strong>Remerciements spéciaux</strong> : Le travail des contributeurs ci-dessus a fait avancer EasyAIoT sur plusieurs fronts, notamment la documentation et les scripts de déploiement multiplateforme, la mise en œuvre des capacités vidéo selon la norme nationale (dont GB28181), les tests d'intégration IA, la découverte directe multi-marques et l'intégration en masse des caméras, la mise en production de la visualisation spatiale Tianditu, l'architecture de déploiement et d'ordonnancement des clusters multimédia hétérogènes, ainsi que l'intégration de bout en bout EasyAIoT-Edge reliant l'accès caméra et l'IA sur l'edge. Leur professionnalisme et leur dévouement méritent notre reconnaissance et notre respect. Encore une fois, nous exprimons notre gratitude la plus sincère à ces contributeurs exceptionnels ! 🙏
 </p>
 
 ## 🏆 Meilleurs praticiens
@@ -770,7 +788,7 @@ Nous remercions les personnes suivantes pour leur soutien à ce projet, sous for
     <tr>
       <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/陈勇至.jpg" width="80px;" alt="陈勇至"/><br /><sub><b>陈勇至</b></sub></a></td>
       <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/Dark.jpg" width="80px;" alt="Dark"/><br /><sub><b>Dark</b></sub></a></td>
-      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/machh.jpg" width="80px;" alt="machh"/><br /><sub><b>machh</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://github.com/machh" target="_blank"><img src="./.image/sponsor/machh.jpg" width="80px;" alt="machh"/><br /><sub><b>machh</b></sub></a></td>
       <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/三块两毛四.jpg" width="80px;" alt="三块两毛四"/><br /><sub><b>三块两毛四</b></sub></a></td>
       <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/嘎嗝.jpg" width="80px;" alt="嘎嗝"/><br /><sub><b>嘎嗝</b></sub></a></td>
       <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/曹.jpg" width="80px;" alt="曹"/><br /><sub><b>曹</b></sub></a></td>
@@ -939,6 +957,9 @@ Nous remercions les personnes suivantes pour leur soutien à ce projet, sous for
         <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/小工头.jpg" width="80px;" alt="小工头"/><br /><sub><b>小工头</b></sub></a></td>
         <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/西乡一粒沙.jpg" width="80px;" alt="西乡一粒沙"/><br /><sub><b>西乡一粒沙</b></sub></a></td>
         <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/爱吃小柚子.jpg" width="80px;" alt="爱吃小柚子"/><br /><sub><b>爱吃小柚子</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/阿龙.jpg" width="80px;" alt="阿龙"/><br /><sub><b>阿龙</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/雨落流殇.jpg" width="80px;" alt="雨落流殇"/><br /><sub><b>雨落流殇</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/遗忘的星空.jpg" width="80px;" alt="遗忘的星空"/><br /><sub><b>遗忘的星空</b></sub></a></td>
     </tr>
   </tbody>
 </table>

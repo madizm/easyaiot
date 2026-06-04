@@ -735,11 +735,29 @@ EasyAIoT — это проект с открытым исходным кодом
 <td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50; width: 32%; min-width: 9rem;"><nobr>遗忘的星空</nobr></td>
 <td style="padding: 15px; border: 1px solid #e0e0e0; color: #444; line-height: 1.8;">Внёс вклад в развитие прямого подключения устройств EasyAIoT: инвентаризация IP-камер разных брендов и сканирование подсетей с массовым обнаружением IPC и NVR Hikvision; улучшены массовый поиск и регистрация в один клик для напрямую подключённых устройств в одной подсети и между подсетями. Доступ реализован через нативные протоколы устройств, с обходом SDK Hikvision и снижением зависимости от платформы Hikvision — заложена основа для открытого и контролируемого масштабного подключения камер.</td>
 </tr>
+<tr style="background-color: #f8f9fa;">
+<td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50; width: 32%; min-width: 9rem;">
+<div style="display: flex; align-items: center; gap: 12px;">
+<img src=".image/sponsor/阿龙.jpg" alt="阿龙" style="width: 48px; height: 48px; border-radius: 50%; object-fit: cover; flex-shrink: 0; box-shadow: 0 2px 6px rgba(0,0,0,0.12);">
+<nobr>阿龙</nobr>
+</div>
+</td>
+<td style="padding: 15px; border: 1px solid #e0e0e0; color: #444; line-height: 1.8;">Внёс вклад в развитие EasyAIoT в направлении картографической визуализации и пространственного анализа, самостоятельно реализовав полный код пространственной визуализации на базе Tianditu: интеграция национальной подложки Tianditu, размещение камер и устройств оповещения, представление распределения на карте, поиск мест и пакетный импорт координат, автоматическое отображение тревожных событий на карте, отслеживание людей и транспортных средств и воспроизведение траекторий мобильных устройств — переведя возможность «пространственной визуализации Tianditu и анализа на карте» от проектирования к готовому к промышленной эксплуатации решению.</td>
+</tr>
+<tr>
+<td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50; width: 32%; min-width: 9rem;">
+<div style="display: flex; align-items: center; gap: 12px;">
+<img src=".image/sponsor/雨落流殇.jpg" alt="雨落流殇" style="width: 48px; height: 48px; border-radius: 50%; object-fit: cover; flex-shrink: 0; box-shadow: 0 2px 6px rgba(0,0,0,0.12);">
+<nobr>雨落流殇</nobr>
+</div>
+</td>
+<td style="padding: 15px; border: 1px solid #e0e0e0; color: #444; line-height: 1.8;">Внёс вклад в развитие EasyAIoT в направлении сверхкрупномасштабной доставки потокового мультимедиа, предложив архитектуру развёртывания и подход к планированию кластеров гетерогенных потоковых серверов SRS и ZLMediaKit: координация пулов узлов, разделение плоскости управления потоковым мультимедиа и бизнес-слоя, конвейеры хранения и загрузки, регистрация и планирование узлов — заложив важную архитектурную основу для одновременного подключения десятков тысяч камер со стабильной доставкой и эластичным масштабированием.</td>
+</tr>
 </tbody>
 </table>
 
 <p style="font-size: 14px; line-height: 1.8; color: #2c3e50; font-weight: 500; margin: 20px 0; padding: 15px; background-color: #e8f4f8; border-left: 4px solid #3498db; border-radius: 4px;">
-<strong>Особая благодарность</strong>: Работа перечисленных участников способствовала развитию EasyAIoT в разных направлениях — от документации и сценариев кроссплатформенного развертывания до внедрения видеовозможностей по национальному стандарту (включая GB28181), интеграционного тестирования с ИИ, прямого обнаружения многобрендовых камер и массового подключения, а также сквозной интеграции EasyAIoT-Edge на периферии. Их профессионализм и самоотверженная преданность достойны нашего изучения и уважения. Ещё раз выражаем нашу самую искреннюю благодарность этим выдающимся участникам! 🙏
+<strong>Особая благодарность</strong>: Работа перечисленных участников способствовала развитию EasyAIoT в разных направлениях — от документации и сценариев кроссплатформенного развертывания до внедрения видеовозможностей по национальному стандарту (включая GB28181), интеграционного тестирования с ИИ, прямого обнаружения многобрендовых камер и массового подключения, полноценной реализации пространственной визуализации Tianditu, архитектуры развёртывания и планирования гетерогенных потоковых кластеров, а также сквозной интеграции EasyAIoT-Edge на периферии. Их профессионализм и самоотверженная преданность достойны нашего изучения и уважения. Ещё раз выражаем нашу самую искреннюю благодарность этим выдающимся участникам! 🙏
 </p>
 
 ## 🏆 Лучшие практики внедрения
@@ -770,7 +788,7 @@ EasyAIoT — это проект с открытым исходным кодом
     <tr>
       <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/陈勇至.jpg" width="80px;" alt="陈勇至"/><br /><sub><b>陈勇至</b></sub></a></td>
       <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/Dark.jpg" width="80px;" alt="Dark"/><br /><sub><b>Dark</b></sub></a></td>
-      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/machh.jpg" width="80px;" alt="machh"/><br /><sub><b>machh</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://github.com/machh" target="_blank"><img src="./.image/sponsor/machh.jpg" width="80px;" alt="machh"/><br /><sub><b>machh</b></sub></a></td>
       <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/三块两毛四.jpg" width="80px;" alt="三块两毛四"/><br /><sub><b>三块两毛四</b></sub></a></td>
       <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/嘎嗝.jpg" width="80px;" alt="嘎嗝"/><br /><sub><b>嘎嗝</b></sub></a></td>
       <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/曹.jpg" width="80px;" alt="曹"/><br /><sub><b>曹</b></sub></a></td>
@@ -939,6 +957,9 @@ EasyAIoT — это проект с открытым исходным кодом
         <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/小工头.jpg" width="80px;" alt="小工头"/><br /><sub><b>小工头</b></sub></a></td>
         <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/西乡一粒沙.jpg" width="80px;" alt="西乡一粒沙"/><br /><sub><b>西乡一粒沙</b></sub></a></td>
         <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/爱吃小柚子.jpg" width="80px;" alt="爱吃小柚子"/><br /><sub><b>爱吃小柚子</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/阿龙.jpg" width="80px;" alt="阿龙"/><br /><sub><b>阿龙</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/雨落流殇.jpg" width="80px;" alt="雨落流殇"/><br /><sub><b>雨落流殇</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/遗忘的星空.jpg" width="80px;" alt="遗忘的星空"/><br /><sub><b>遗忘的星空</b></sub></a></td>
     </tr>
   </tbody>
 </table>
